@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python scripts/office/unpack.py \"docs/pitch/Product Pitch - SecondSeat.docx\" \"docs/pitch/unpacked/\")",
+      "Bash(pandoc \"docs/pitch/Product Pitch - SecondSeat.docx\" -o - -t markdown)",
+      "Bash(python3 -)",
+      "Bash(Get-ChildItem -Recurse \"C:\\\\Projects\\\\SecondSeat\\\\apps\\\\web\\\\src\\\\app\\\\\\(dashboard\\)\\\\dashboard\\\\ingest\")",
+      "Bash(Select-Object FullName)",
+      "PowerShell(git -C \"C:\\\\Projects\\\\SecondSeat\" status --short)"
+    ]
+  }
+}
