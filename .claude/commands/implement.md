@@ -5,9 +5,14 @@ description: Begin implementation after spec is approved and logs are written
 
 Logs have been confirmed. Implement the approved spec in this order:
 
-1. **Backend** — services, models, routes, controllers
-2. **Frontend** — components, pages, state
-3. **Unit tests** — co-located `*.test.ts` files per the testing rules in `.claude/rules/testing.md`
+1. **Create the working branch first.** Cut a fresh branch from `main` for the current task before making implementation changes. Name it `<author_name>/<task_word>`.
+   - Read `author_name` from `git config user.name`
+   - Normalize it for branch names (lowercase; replace spaces and other unsafe characters with `-`)
+   - Derive `task_word` from the approved task/spec as one concise lowercase word
+   - This branch is the agent's working branch for the current task; the human will handle the PR separately
+2. **Backend** — services, models, routes, controllers
+3. **Frontend** — components, pages, state
+4. **Unit tests** — co-located `*.test.ts` files per the testing rules in `.claude/rules/testing.md`
 
 Rules that always apply:
 
@@ -15,6 +20,8 @@ Rules that always apply:
 - Follow `.claude/rules/security.md` for secrets, auth, and input validation
 - Follow `.claude/rules/testing.md` for test structure and mocking rules
 - Stay within the scope defined in the approved spec — if something requires a scope change, STOP and flag it before continuing
+- Base the branch on `main`, not the current branch tip
+- If the target branch name already exists and is not clearly reusable for the same task, STOP and ask the user before proceeding
 
 When implementation is complete:
 

@@ -47,6 +47,7 @@ Every non-trivial request (new feature, bug fix, refactor, schema change) follow
 ### Phase 4 — Implement (`/implement`)
 
 - **Trigger:** user replies `proceed`.
+- **First action:** cut a fresh working branch from `main` named `<normalized git config user.name>/<task_word>` for the task being implemented. This is the agent working branch; the human creates the PR separately.
 - **Order:** Backend → Frontend → Unit tests → automated integration tests. Follow `.claude/rules/coding.md`, `.claude/rules/security.md`, `.claude/rules/testing.md`.
 - **Stay in scope.** If something requires a scope change, STOP and flag it — do not silently expand.
 - **End-of-phase output:** files changed, tests written, deviations from spec (or "none"), then signal: `Ready for acceptance testing.`
