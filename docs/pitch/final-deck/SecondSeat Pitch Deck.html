@@ -1,0 +1,1127 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>SecondSeat — Pitch Deck</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Press+Start+2P&display=swap" rel="stylesheet" />
+<script src="deck-stage.js"></script>
+<style>
+  :root{
+    --ink:#0B0E13;
+    --ink-2:#11151D;
+    --ink-3:#171C26;
+    --line:#222936;
+    --line-2:#2E3645;
+    --bone:#EFEAE0;
+    --bone-dim:#B8B3A8;
+    --bone-mute:#7A7669;
+    --lime:#A6FF55;
+    --lime-dim:#5C8A30;
+    --amber:#FFB266;
+    --rose:#FF6B6B;
+
+    --type-display:120px;
+    --type-title:64px;
+    --type-subtitle:44px;
+    --type-body:30px;
+    --type-small:24px;
+    --type-mono:22px;
+    --type-mono-sm:18px;
+
+    --pad-x:100px;
+    --pad-top:90px;
+    --pad-bottom:80px;
+    --gap-title:48px;
+    --gap-item:24px;
+  }
+  html,body{margin:0;background:#000;}
+  deck-stage{background:#000;}
+  section{
+    box-sizing:border-box;
+    background:var(--ink);
+    color:var(--bone);
+    font-family:"Space Grotesk", system-ui, sans-serif;
+    font-size:var(--type-body);
+    line-height:1.35;
+    overflow:hidden;
+    position:relative;
+  }
+  /* Grid backdrop on every slide */
+  section::before{
+    content:"";
+    position:absolute; inset:0;
+    background-image:
+      linear-gradient(to right, rgba(255,255,255,0.025) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(255,255,255,0.025) 1px, transparent 1px);
+    background-size: 60px 60px;
+    pointer-events:none;
+    z-index:0;
+  }
+  section > *{ position:relative; z-index:1; }
+
+  .mono{ font-family:"JetBrains Mono", ui-monospace, monospace; }
+  .pixel{ font-family:"Press Start 2P", "JetBrains Mono", monospace; letter-spacing:0; }
+
+  /* Slide chrome (HUD frame + footer + slide id) */
+  .frame{
+    position:absolute; inset:32px;
+    border:1px solid var(--line);
+    pointer-events:none;
+    z-index:2;
+  }
+  .frame::before, .frame::after,
+  .frame > i, .frame > b{
+    content:""; position:absolute; width:18px; height:18px;
+    border:2px solid var(--lime);
+  }
+  .frame::before{ top:-2px; left:-2px; border-right:none; border-bottom:none; }
+  .frame::after{ top:-2px; right:-2px; border-left:none; border-bottom:none; }
+  .frame > i{ display:block; bottom:-2px; left:-2px; border-right:none; border-top:none; }
+  .frame > b{ display:block; bottom:-2px; right:-2px; border-left:none; border-top:none; }
+
+  .footbar{
+    position:absolute; left:60px; right:60px; bottom:50px;
+    display:flex; justify-content:space-between; align-items:center;
+    font-family:"JetBrains Mono", monospace;
+    font-size:var(--type-mono-sm);
+    color:var(--bone-mute);
+    letter-spacing:0.06em;
+    z-index:3;
+  }
+  .footbar .lime{ color:var(--lime); }
+  .footbar .dot{
+    display:inline-block; width:8px; height:8px; background:var(--lime);
+    margin-right:10px; vertical-align:middle;
+    box-shadow: 0 0 12px var(--lime);
+    animation: blink 1.6s infinite;
+  }
+  @keyframes blink{ 0%,49%{opacity:1} 50%,100%{opacity:0.25} }
+
+  .slide-id{
+    position:absolute; top:60px; left:60px;
+    font-family:"JetBrains Mono", monospace;
+    font-size:var(--type-mono-sm);
+    color:var(--bone-mute);
+    letter-spacing:0.18em;
+    z-index:3;
+  }
+
+  /* Section eyebrow */
+  .eyebrow{
+    font-family:"JetBrains Mono", monospace;
+    font-size:var(--type-mono);
+    color:var(--lime);
+    letter-spacing:0.24em;
+    text-transform:uppercase;
+    margin:0 0 28px 0;
+    display:flex; align-items:center; gap:18px;
+  }
+  .eyebrow::before{
+    content:""; width:48px; height:2px; background:var(--lime);
+  }
+  .title{
+    font-family:"Space Grotesk", sans-serif;
+    font-weight:500;
+    font-size:var(--type-title);
+    line-height:1.05;
+    letter-spacing:-0.02em;
+    margin:0;
+    color:var(--bone);
+  }
+  .title em{
+    font-style:normal;
+    color:var(--lime);
+  }
+  .subtitle{
+    font-family:"Space Grotesk", sans-serif;
+    font-weight:400;
+    font-size:var(--type-subtitle);
+    line-height:1.15;
+    letter-spacing:-0.01em;
+    color:var(--bone);
+    margin:0;
+  }
+
+  /* Slide layout helpers */
+  .pad{
+    position:absolute; inset:0;
+    padding: var(--pad-top) var(--pad-x) var(--pad-bottom);
+    display:flex; flex-direction:column;
+    box-sizing:border-box;
+  }
+
+  /* === SLIDE 1 — TITLE === */
+  .s-title{ background: radial-gradient(1200px 700px at 30% 40%, #161D2A 0%, var(--ink) 60%); }
+  .s-title .pad{ justify-content:space-between; padding-top:140px; padding-bottom:140px; }
+  .s-title .topline{
+    display:flex; gap:40px; align-items:center;
+    font-family:"JetBrains Mono", monospace;
+    font-size:var(--type-mono);
+    color:var(--bone-mute);
+    letter-spacing:0.18em;
+  }
+  .s-title .topline .tag{
+    color:var(--ink); background:var(--lime);
+    padding:6px 14px; letter-spacing:0.18em; font-weight:600;
+  }
+  .s-title h1{
+    font-family:"Space Grotesk", sans-serif;
+    font-weight:500;
+    font-size:var(--type-display);
+    line-height:0.95;
+    letter-spacing:-0.035em;
+    margin:0;
+  }
+  .s-title h1 .second{ color:var(--bone); }
+  .s-title h1 .seat{ color:var(--lime); }
+  .s-title .tagline{
+    font-family:"Space Grotesk", sans-serif;
+    font-weight:300;
+    font-size:42px;
+    color:var(--bone-dim);
+    margin-top:24px;
+    max-width:1100px;
+  }
+  .s-title .badge-row{
+    display:flex; gap:24px; align-items:center;
+    margin-top:48px;
+  }
+  .badge{
+    font-family:"JetBrains Mono", monospace;
+    font-size:var(--type-mono-sm);
+    letter-spacing:0.18em; text-transform:uppercase;
+    border:1px solid var(--line-2);
+    padding:10px 18px; color:var(--bone-dim);
+  }
+  .badge.lime{ border-color:var(--lime); color:var(--lime); }
+  .s-title .meta{
+    display:flex; justify-content:space-between; align-items:flex-end;
+    font-family:"JetBrains Mono", monospace;
+    font-size:var(--type-mono-sm);
+    color:var(--bone-mute);
+    letter-spacing:0.14em;
+  }
+  .s-title .meta .pixel{
+    font-family:"Press Start 2P", monospace;
+    color:var(--lime); font-size:14px; letter-spacing:0;
+  }
+
+  .hp-bar{
+    display:flex; gap:6px; align-items:center;
+  }
+  .hp-bar .cell{
+    width:22px; height:14px; background:var(--lime);
+  }
+  .hp-bar .cell.dim{ background:var(--lime-dim); opacity:0.5; }
+  .hp-bar .cell.empty{ background:transparent; border:1px solid var(--line-2); }
+
+  /* === SLIDE 2 — PROBLEM === */
+  .problem-grid{
+    display:grid; grid-template-columns:1fr 1fr; gap:28px;
+    margin-top:auto;
+  }
+  .prob-card{
+    border:1px solid var(--line);
+    padding:36px 36px 32px;
+    background:var(--ink-2);
+    position:relative;
+  }
+  .prob-card .num{
+    position:absolute; top:24px; right:28px;
+    font-family:"JetBrains Mono", monospace;
+    font-size:var(--type-mono-sm); color:var(--bone-mute);
+    letter-spacing:0.16em;
+  }
+  .prob-card h3{
+    font-family:"Space Grotesk", sans-serif;
+    font-size:36px; font-weight:600; margin:0 0 16px;
+    color:var(--bone);
+    letter-spacing:-0.01em;
+  }
+  .prob-card p{
+    font-size:var(--type-small);
+    color:var(--bone-dim);
+    margin:0; line-height:1.4;
+  }
+  .prob-card .icon{
+    display:inline-flex; align-items:center; justify-content:center;
+    width:40px; height:40px; margin-right:14px;
+    background:var(--ink-3); border:1px solid var(--line-2);
+    font-family:"JetBrains Mono", monospace; font-size:18px;
+    color:var(--lime); vertical-align:middle;
+  }
+  .prob-card .head-row{ display:flex; align-items:center; margin-bottom:14px; }
+
+  /* === SLIDE 3 — AUDIENCE === */
+  .persona-grid{
+    display:grid; grid-template-columns:1fr 1fr; gap:36px;
+    margin-top:auto;
+  }
+  .persona{
+    background:var(--ink-2);
+    border:1px solid var(--line);
+    padding:0;
+    display:flex; flex-direction:column;
+  }
+  .persona-head{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:22px 32px;
+    background:var(--ink-3);
+    border-bottom:1px solid var(--line);
+    font-family:"JetBrains Mono", monospace;
+    font-size:var(--type-mono-sm);
+    letter-spacing:0.16em; color:var(--bone-dim);
+  }
+  .persona-head .id{ color:var(--lime); }
+  .persona-body{ padding:28px 32px 30px; }
+  .persona h3{
+    font-family:"Space Grotesk", sans-serif;
+    font-size:38px; font-weight:600;
+    margin:0 0 8px; color:var(--bone);
+    letter-spacing:-0.01em;
+  }
+  .persona .class{
+    font-family:"JetBrains Mono", monospace;
+    font-size:16px; color:var(--lime);
+    letter-spacing:0.18em; text-transform:uppercase;
+    margin-bottom:22px;
+  }
+  .stat-row{
+    display:flex; justify-content:space-between; align-items:center;
+    margin-bottom:14px;
+    font-family:"JetBrains Mono", monospace;
+    font-size:14px; color:var(--bone-mute);
+    letter-spacing:0.16em;
+  }
+  .bar{
+    display:flex; gap:3px; margin-bottom:18px;
+  }
+  .bar span{
+    flex:1; height:8px; background:var(--line);
+  }
+  .bar span.fill{ background:var(--lime); }
+  .bar span.amb{ background:var(--amber); }
+  .persona .label{
+    font-family:"JetBrains Mono", monospace;
+    font-size:14px; color:var(--bone-mute);
+    letter-spacing:0.18em; text-transform:uppercase;
+    margin:18px 0 6px;
+  }
+  .persona p{
+    font-size:22px; color:var(--bone-dim); margin:0; line-height:1.4;
+  }
+  .persona .help{
+    border-top:1px dashed var(--line-2);
+    margin-top:20px; padding-top:18px;
+  }
+  .persona .help p{ color:var(--bone); }
+  .persona .help .label{ color:var(--lime); margin-top:0; }
+
+  /* === SLIDE 4 — THE HOW === */
+  .steps{
+    display:grid; grid-template-columns: repeat(5, 1fr);
+    gap:18px; margin-top:auto;
+  }
+  .step{
+    border:1px solid var(--line); background:var(--ink-2);
+    padding:28px 22px 26px;
+    position:relative; min-height:340px;
+    display:flex; flex-direction:column;
+  }
+  .step .lvl{
+    font-family:"Press Start 2P", monospace;
+    font-size:13px; color:var(--lime); letter-spacing:0;
+    margin-bottom:18px;
+  }
+  .step .num{
+    font-family:"Space Grotesk", sans-serif;
+    font-size:54px; font-weight:500; line-height:1;
+    color:var(--bone); letter-spacing:-0.03em;
+    margin-bottom:14px;
+  }
+  .step h4{
+    font-family:"Space Grotesk", sans-serif;
+    font-size:24px; font-weight:600;
+    margin:0 0 12px; color:var(--lime);
+    letter-spacing:-0.005em;
+  }
+  .step p{
+    font-size:18px; color:var(--bone-dim);
+    margin:0; line-height:1.4;
+  }
+  .step .arrow{
+    position:absolute; right:-18px; top:50%; transform:translateY(-50%);
+    width:24px; height:2px; background:var(--lime);
+    z-index:2;
+  }
+  .step .arrow::after{
+    content:""; position:absolute; right:0; top:-4px;
+    border:5px solid transparent; border-left:8px solid var(--lime);
+  }
+  .step:last-child .arrow{ display:none; }
+
+  /* === SLIDE 5 — ARCHITECTURE === */
+  .arch-wrap{
+    display:flex; flex-direction:column; gap:22px;
+    margin-top:auto;
+  }
+  .arch-layer{
+    border:1px solid var(--line);
+    background:var(--ink-2);
+    padding:24px 28px;
+  }
+  .arch-layer h4{
+    font-family:"JetBrains Mono", monospace;
+    font-size:var(--type-mono-sm);
+    letter-spacing:0.2em; text-transform:uppercase;
+    color:var(--lime); margin:0 0 18px;
+    display:flex; justify-content:space-between; align-items:center;
+  }
+  .arch-layer h4 .tag{
+    color:var(--bone-mute); font-size:14px; letter-spacing:0.16em;
+  }
+  .nodes{
+    display:grid; gap:14px;
+  }
+  .nodes.cols-2{ grid-template-columns:1fr 1fr; }
+  .nodes.cols-4{ grid-template-columns:repeat(4,1fr); }
+  .node{
+    border:1px solid var(--line-2);
+    background:var(--ink-3);
+    padding:18px 20px;
+    display:flex; flex-direction:column; gap:6px;
+  }
+  .node .key{
+    font-family:"JetBrains Mono", monospace;
+    font-size:14px; color:var(--lime);
+    letter-spacing:0.14em; text-transform:uppercase;
+  }
+  .node .name{
+    font-family:"Space Grotesk", sans-serif;
+    font-size:24px; font-weight:600; color:var(--bone);
+    letter-spacing:-0.005em;
+  }
+  .node .desc{
+    font-size:16px; color:var(--bone-dim); line-height:1.35;
+  }
+  .arch-note{
+    font-family:"JetBrains Mono", monospace;
+    font-size:18px; color:var(--bone-mute);
+    letter-spacing:0.05em;
+    border-left:2px solid var(--lime);
+    padding:6px 0 6px 18px;
+    margin-top:6px;
+  }
+
+  /* === SLIDE 6 — BUSINESS === */
+  .tiers{
+    display:grid; grid-template-columns:repeat(3,1fr); gap:24px;
+    margin-top:auto;
+  }
+  .tier{
+    border:1px solid var(--line);
+    background:var(--ink-2);
+    padding:32px 30px 30px;
+    display:flex; flex-direction:column;
+    position:relative;
+  }
+  .tier.featured{
+    border-color:var(--lime);
+    background: linear-gradient(180deg, rgba(166,255,85,0.06) 0%, var(--ink-2) 70%);
+  }
+  .tier .lvl{
+    font-family:"JetBrains Mono", monospace;
+    font-size:var(--type-mono-sm); color:var(--lime);
+    letter-spacing:0.2em; margin-bottom:8px;
+  }
+  .tier h3{
+    font-family:"Space Grotesk", sans-serif;
+    font-size:38px; font-weight:600;
+    margin:0 0 6px; color:var(--bone);
+    letter-spacing:-0.01em;
+  }
+  .tier .price{
+    font-family:"JetBrains Mono", monospace;
+    font-size:18px; color:var(--bone-mute);
+    letter-spacing:0.14em; margin-bottom:24px;
+  }
+  .tier ul{ list-style:none; padding:0; margin:0; flex:1; }
+  .tier li{
+    display:flex; align-items:flex-start; gap:14px;
+    font-size:21px; color:var(--bone-dim);
+    margin-bottom:14px; line-height:1.35;
+  }
+  .tier li::before{
+    content:"▸"; color:var(--lime); font-family:"JetBrains Mono", monospace;
+    flex-shrink:0; margin-top:2px;
+  }
+  .tier .pixel-row{
+    margin-top:22px; padding-top:16px;
+    border-top:1px dashed var(--line-2);
+    font-family:"JetBrains Mono", monospace;
+    font-size:14px; color:var(--bone-mute);
+    letter-spacing:0.14em;
+  }
+  .gtm{
+    margin-top:24px;
+    background:var(--ink-3);
+    border-left:3px solid var(--amber);
+    padding:18px 24px;
+    font-family:"JetBrains Mono", monospace;
+    font-size:18px;
+    color:var(--bone);
+    letter-spacing:0.02em;
+  }
+  .gtm .tag{
+    color:var(--amber); margin-right:14px; letter-spacing:0.18em;
+  }
+
+  /* === SLIDE 7 — SCOPE === */
+  .scope-grid{
+    display:grid; grid-template-columns:1fr 1fr; gap:32px;
+    margin-top:auto;
+  }
+  .scope-col{
+    border:1px solid var(--line);
+    background:var(--ink-2);
+    padding:30px 32px;
+    display:flex; flex-direction:column;
+  }
+  .scope-col.in{ border-top:3px solid var(--lime); }
+  .scope-col.out{ border-top:3px solid var(--rose); }
+  .scope-col.out h4, .scope-col.out li{ opacity:0.92; }
+  .scope-col h4{
+    font-family:"JetBrains Mono", monospace;
+    font-size:var(--type-mono);
+    letter-spacing:0.18em; text-transform:uppercase;
+    margin:0 0 22px; color:var(--bone);
+    display:flex; align-items:center; gap:14px;
+  }
+  .scope-col.in h4 .ico{ color:var(--lime); }
+  .scope-col.out h4 .ico{ color:var(--rose); }
+  .scope-col ul{ list-style:none; padding:0; margin:0; }
+  .scope-col li{
+    display:flex; align-items:flex-start; gap:14px;
+    font-size:22px; color:var(--bone-dim);
+    margin-bottom:14px; line-height:1.4;
+    padding-bottom:14px;
+    border-bottom:1px solid var(--line);
+  }
+  .scope-col li:last-child{ border-bottom:none; }
+  .scope-col.in li::before{
+    content:"+"; color:var(--lime); font-family:"JetBrains Mono", monospace;
+    width:22px; flex-shrink:0; font-weight:700;
+  }
+  .scope-col.out li::before{
+    content:"×"; color:var(--rose); font-family:"JetBrains Mono", monospace;
+    width:22px; flex-shrink:0; font-weight:700;
+  }
+  .winstate{
+    margin-top:30px;
+    padding:24px 28px;
+    background:var(--ink-3);
+    border:1px dashed var(--lime);
+    font-family:"JetBrains Mono", monospace;
+    font-size:20px; color:var(--bone);
+    letter-spacing:0.04em;
+  }
+  .winstate .tag{
+    color:var(--lime); margin-right:14px; letter-spacing:0.2em;
+  }
+
+  /* === SLIDE 8 — OUTRO === */
+  .s-out{ background: radial-gradient(900px 600px at 70% 50%, #161D2A 0%, var(--ink) 60%); }
+  .s-out .pad{ justify-content:center; align-items:flex-start; padding-left:160px; padding-right:160px; }
+  .s-out .stamp{
+    font-family:"JetBrains Mono", monospace;
+    font-size:var(--type-mono);
+    letter-spacing:0.24em; text-transform:uppercase;
+    color:var(--lime); margin-bottom:48px;
+    display:flex; align-items:center; gap:18px;
+  }
+  .s-out .stamp::before{
+    content:""; width:14px; height:14px; background:var(--lime);
+    box-shadow: 0 0 18px var(--lime);
+  }
+  .s-out .big{
+    font-family:"Space Grotesk", sans-serif;
+    font-weight:400;
+    font-size:104px;
+    line-height:1.0;
+    letter-spacing:-0.035em;
+    margin:0;
+    color:var(--bone);
+  }
+  .s-out .big em{
+    font-style:normal; color:var(--lime);
+  }
+  .s-out .big .at{
+    color:var(--bone-dim); font-weight:300;
+  }
+  .s-out .body{
+    margin-top:56px; max-width:1300px;
+    font-size:30px; line-height:1.45;
+    color:var(--bone-dim); font-weight:300;
+  }
+  .s-out .sig{
+    position:absolute; bottom:90px; left:160px; right:160px;
+    display:flex; justify-content:space-between; align-items:center;
+    font-family:"JetBrains Mono", monospace;
+    font-size:var(--type-mono-sm);
+    color:var(--bone-mute); letter-spacing:0.18em;
+  }
+  .s-out .sig .pixel{
+    font-family:"Press Start 2P", monospace;
+    font-size:14px; color:var(--lime); letter-spacing:0;
+  }
+
+  /* === SLIDE TRANSITIONS === */
+  @keyframes ss-fade-up {
+    from { opacity:0; transform: translateY(28px); }
+    to   { opacity:1; transform: translateY(0); }
+  }
+  @keyframes ss-fade-in {
+    from { opacity:0; }
+    to   { opacity:1; }
+  }
+  @keyframes ss-slide-right {
+    from { opacity:0; transform: translateX(-32px); }
+    to   { opacity:1; transform: translateX(0); }
+  }
+  @keyframes ss-scale-in {
+    from { opacity:0; transform: scale(0.94); }
+    to   { opacity:1; transform: scale(1); }
+  }
+  @keyframes ss-bar-grow {
+    from { transform: scaleX(0); transform-origin:left; }
+    to   { transform: scaleX(1); transform-origin:left; }
+  }
+  @keyframes ss-blink-in {
+    0%   { opacity:0; }
+    40%  { opacity:0; }
+    50%  { opacity:1; }
+    60%  { opacity:0; }
+    70%  { opacity:1; }
+    100% { opacity:1; }
+  }
+  @keyframes ss-corner {
+    from { opacity:0; transform: scale(0.4); }
+    to   { opacity:1; transform: scale(1); }
+  }
+
+  /* Default: hide animatable bits. They reveal when slide becomes active. */
+  section .eyebrow,
+  section .title,
+  section .subtitle,
+  section .prob-card,
+  section .persona,
+  section .step,
+  section .arch-layer,
+  section .arch-note,
+  section .tier,
+  section .gtm,
+  section .scope-col,
+  section .winstate,
+  section .badge-row .badge,
+  section .topline,
+  section.s-title h1,
+  section.s-title .tagline,
+  section.s-title .meta,
+  section.s-out .stamp,
+  section.s-out .big,
+  section.s-out .body,
+  section.s-out .sig {
+    opacity:0;
+  }
+  section .frame::before,
+  section .frame::after,
+  section .frame > i,
+  section .frame > b { opacity:0; }
+  section .slide-id,
+  section .footbar { opacity:0; }
+
+  /* When active — animate in with stagger */
+  section[data-deck-active] .frame::before { animation: ss-corner 0.5s 0.05s ease-out forwards; }
+  section[data-deck-active] .frame::after  { animation: ss-corner 0.5s 0.12s ease-out forwards; }
+  section[data-deck-active] .frame > i     { animation: ss-corner 0.5s 0.18s ease-out forwards; }
+  section[data-deck-active] .frame > b     { animation: ss-corner 0.5s 0.25s ease-out forwards; }
+  section[data-deck-active] .slide-id      { animation: ss-blink-in 0.9s 0.1s ease-out forwards; }
+  section[data-deck-active] .footbar       { animation: ss-fade-in 0.6s 0.6s ease-out forwards; }
+
+  section[data-deck-active] .eyebrow   { animation: ss-slide-right 0.55s 0.25s ease-out forwards; }
+  section[data-deck-active] .title     { animation: ss-fade-up 0.7s 0.4s cubic-bezier(0.2,0.7,0.2,1) forwards; }
+  section[data-deck-active] .subtitle  { animation: ss-fade-up 0.7s 0.45s cubic-bezier(0.2,0.7,0.2,1) forwards; }
+
+  /* Title slide */
+  section[data-deck-active] .topline   { animation: ss-fade-in 0.6s 0.2s ease-out forwards; }
+  section[data-deck-active].s-title h1 { animation: ss-fade-up 0.9s 0.4s cubic-bezier(0.2,0.7,0.2,1) forwards; }
+  section[data-deck-active].s-title .tagline { animation: ss-fade-up 0.7s 0.7s ease-out forwards; }
+  section[data-deck-active].s-title .badge-row .badge:nth-child(1){ animation: ss-fade-up 0.5s 0.85s ease-out forwards; }
+  section[data-deck-active].s-title .badge-row .badge:nth-child(2){ animation: ss-fade-up 0.5s 0.95s ease-out forwards; }
+  section[data-deck-active].s-title .badge-row .badge:nth-child(3){ animation: ss-fade-up 0.5s 1.05s ease-out forwards; }
+  section[data-deck-active].s-title .badge-row .badge:nth-child(4){ animation: ss-fade-up 0.5s 1.15s ease-out forwards; }
+  section[data-deck-active].s-title .meta { animation: ss-fade-in 0.6s 1.3s ease-out forwards; }
+
+  /* Problem cards stagger */
+  section[data-deck-active] .prob-card:nth-child(1){ animation: ss-fade-up 0.55s 0.65s ease-out forwards; }
+  section[data-deck-active] .prob-card:nth-child(2){ animation: ss-fade-up 0.55s 0.78s ease-out forwards; }
+  section[data-deck-active] .prob-card:nth-child(3){ animation: ss-fade-up 0.55s 0.91s ease-out forwards; }
+  section[data-deck-active] .prob-card:nth-child(4){ animation: ss-fade-up 0.55s 1.04s ease-out forwards; }
+
+  /* Personas */
+  section[data-deck-active] .persona:nth-child(1){ animation: ss-fade-up 0.6s 0.7s ease-out forwards; }
+  section[data-deck-active] .persona:nth-child(2){ animation: ss-fade-up 0.6s 0.9s ease-out forwards; }
+  section[data-deck-active] .persona .bar span { transform: scaleX(0); transform-origin:left; animation: ss-bar-grow 0.5s ease-out forwards; }
+  section[data-deck-active] .persona .bar span:nth-child(1){ animation-delay: 1.2s; }
+  section[data-deck-active] .persona .bar span:nth-child(2){ animation-delay: 1.25s; }
+  section[data-deck-active] .persona .bar span:nth-child(3){ animation-delay: 1.30s; }
+  section[data-deck-active] .persona .bar span:nth-child(4){ animation-delay: 1.35s; }
+  section[data-deck-active] .persona .bar span:nth-child(5){ animation-delay: 1.40s; }
+  section[data-deck-active] .persona .bar span:nth-child(6){ animation-delay: 1.45s; }
+  section[data-deck-active] .persona .bar span:nth-child(7){ animation-delay: 1.50s; }
+  section[data-deck-active] .persona .bar span:nth-child(8){ animation-delay: 1.55s; }
+
+  /* Steps stagger */
+  section[data-deck-active] .step:nth-child(1){ animation: ss-fade-up 0.5s 0.65s ease-out forwards; }
+  section[data-deck-active] .step:nth-child(2){ animation: ss-fade-up 0.5s 0.80s ease-out forwards; }
+  section[data-deck-active] .step:nth-child(3){ animation: ss-fade-up 0.5s 0.95s ease-out forwards; }
+  section[data-deck-active] .step:nth-child(4){ animation: ss-fade-up 0.5s 1.10s ease-out forwards; }
+  section[data-deck-active] .step:nth-child(5){ animation: ss-fade-up 0.5s 1.25s ease-out forwards; }
+
+  /* Architecture */
+  section[data-deck-active] .arch-layer:nth-child(1){ animation: ss-fade-up 0.55s 0.7s ease-out forwards; }
+  section[data-deck-active] .arch-layer:nth-child(2){ animation: ss-fade-up 0.55s 0.95s ease-out forwards; }
+  section[data-deck-active] .arch-note               { animation: ss-fade-in 0.5s 1.3s ease-out forwards; }
+
+  /* Tiers */
+  section[data-deck-active] .tier:nth-child(1){ animation: ss-fade-up 0.55s 0.65s ease-out forwards; }
+  section[data-deck-active] .tier:nth-child(2){ animation: ss-fade-up 0.6s 0.78s cubic-bezier(0.2,0.7,0.2,1) forwards; }
+  section[data-deck-active] .tier:nth-child(3){ animation: ss-fade-up 0.55s 0.91s ease-out forwards; }
+  section[data-deck-active] .gtm               { animation: ss-fade-up 0.5s 1.15s ease-out forwards; }
+
+  /* Scope */
+  section[data-deck-active] .scope-col:nth-child(1){ animation: ss-fade-up 0.6s 0.65s ease-out forwards; }
+  section[data-deck-active] .scope-col:nth-child(2){ animation: ss-fade-up 0.6s 0.85s ease-out forwards; }
+  section[data-deck-active] .winstate              { animation: ss-fade-up 0.5s 1.15s ease-out forwards; }
+
+  /* Outro */
+  section[data-deck-active].s-out .stamp { animation: ss-blink-in 1s 0.2s ease-out forwards; }
+  section[data-deck-active].s-out .big   { animation: ss-fade-up 0.9s 0.5s cubic-bezier(0.2,0.7,0.2,1) forwards; }
+  section[data-deck-active].s-out .body  { animation: ss-fade-up 0.7s 0.95s ease-out forwards; }
+  section[data-deck-active].s-out .sig   { animation: ss-fade-in 0.6s 1.3s ease-out forwards; }
+
+  /* shared list/icon helpers */
+  .check{
+    display:inline-flex; align-items:center; justify-content:center;
+    width:22px; height:22px; flex-shrink:0;
+    background:var(--lime); color:var(--ink);
+    font-family:"JetBrains Mono", monospace;
+    font-size:14px; font-weight:700;
+  }
+</style>
+</head>
+<body>
+<deck-stage width="1920" height="1080">
+
+<!-- ============ SLIDE 1 — TITLE ============ -->
+<section data-screen-label="01 Title" class="s-title">
+  <div class="frame"><i></i><b></b></div>
+  <div class="slide-id mono">PLAYER_01 / 08</div>
+
+  <div class="pad">
+    <div>
+      <div class="topline">
+        <span class="tag mono">NEW GAME</span>
+        <span>SINGAPORE TECH WEEK</span>
+        <span style="color:var(--bone-mute)">/</span>
+        <span>PRODUCT CHALLENGE 2026</span>
+      </div>
+
+      <h1 style="margin-top:80px;">
+        <span class="second">Second</span><span class="seat">Seat</span>
+      </h1>
+      <p class="tagline">A flow-preserving gaming companion. Just enough help, exactly when you need it.</p>
+
+      <div class="badge-row">
+        <span class="badge lime mono">RAG + LLM</span>
+        <span class="badge mono">SPOILER-AWARE</span>
+        <span class="badge mono">BROWSER-FIRST</span>
+        <span class="badge mono">VOICE OR TEXT</span>
+      </div>
+    </div>
+
+    <div class="meta">
+      <div>
+        <div class="pixel">▶ PRESS  [SPACE]  TO START</div>
+        <div style="margin-top:12px;">ROBERTO J. ASINO &nbsp;//&nbsp; PRODUCT PITCH &nbsp;//&nbsp; 2026</div>
+      </div>
+      <div class="hp-bar" aria-hidden="true">
+        <span class="cell"></span><span class="cell"></span><span class="cell"></span>
+        <span class="cell"></span><span class="cell"></span><span class="cell"></span>
+        <span class="cell dim"></span><span class="cell dim"></span><span class="cell empty"></span><span class="cell empty"></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="footbar"><span><span class="dot"></span>SECONDSEAT.SYS &nbsp;·&nbsp; ONLINE</span><span class="lime">CONTINUE ▸</span></div>
+</section>
+
+<!-- ============ SLIDE 2 — PROBLEM ============ -->
+<section data-screen-label="02 The Problem">
+  <div class="frame"><i></i><b></b></div>
+  <div class="slide-id mono">PLAYER_02 / 08</div>
+
+  <div class="pad">
+    <p class="eyebrow mono">THE PROBLEM</p>
+    <h2 class="title">Getting unstuck <em>breaks your game.</em></h2>
+
+    <div class="problem-grid">
+      <div class="prob-card">
+        <span class="num mono">// 01</span>
+        <div class="head-row">
+          <span class="icon">W</span>
+          <h3>Wikis &amp; GameFAQs</h3>
+        </div>
+        <p>Force tab-switching and scroll hunting. Spoilers appear before you're ready.</p>
+      </div>
+
+      <div class="prob-card">
+        <span class="num mono">// 02</span>
+        <div class="head-row">
+          <span class="icon">▶</span>
+          <h3>YouTube walkthroughs</h3>
+        </div>
+        <p>Turns playing into watching. No control over spoiler depth.</p>
+      </div>
+
+      <div class="prob-card">
+        <span class="num mono">// 03</span>
+        <div class="head-row">
+          <span class="icon">AI</span>
+          <h3>Generic AI tools</h3>
+        </div>
+        <p>Over-explain, hallucinate, or solve the whole puzzle when you wanted one nudge.</p>
+      </div>
+
+      <div class="prob-card">
+        <span class="num mono">// 04</span>
+        <div class="head-row">
+          <span class="icon">⌕</span>
+          <h3>DIY search</h3>
+        </div>
+        <p>Slow and fragmented. Players stitch answers across tabs while the session loses momentum.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="footbar"><span>SECONDSEAT &nbsp;·&nbsp; CHAPTER 02</span><span class="lime mono">FRICTION = -1 HP</span></div>
+</section>
+
+<!-- ============ SLIDE 3 — AUDIENCE ============ -->
+<section data-screen-label="03 The Audience">
+  <div class="frame"><i></i><b></b></div>
+  <div class="slide-id mono">PLAYER_03 / 08</div>
+
+  <div class="pad">
+    <p class="eyebrow mono">THE AUDIENCE</p>
+    <h2 class="title">Busy players who want <em>just enough</em> help.</h2>
+
+    <div class="persona-grid">
+      <!-- Persona 01 -->
+      <div class="persona">
+        <div class="persona-head">
+          <span><span class="id">PERSONA_01</span> &nbsp;//&nbsp; LV 18</span>
+          <span>SESSION 30–60 MIN</span>
+        </div>
+        <div class="persona-body">
+          <h3>The Busy Progress-Seeker</h3>
+          <div class="class">CLASS · MODERN PLAYER</div>
+
+          <div class="stat-row"><span>FRUSTRATION</span><span>HIGH</span></div>
+          <div class="bar"><span class="fill"></span><span class="fill"></span><span class="fill"></span><span class="fill"></span><span class="fill"></span><span class="fill"></span><span></span><span></span></div>
+
+          <div class="stat-row"><span>TIME BUDGET</span><span>LOW</span></div>
+          <div class="bar"><span class="amb"></span><span class="amb"></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+
+          <div class="label">PAIN POINTS</div>
+          <p>Wastes time hunting guides. Gets stuck and drops sessions. Dislikes walls of text.</p>
+
+          <div class="label" style="margin-top:18px;">GOALS</div>
+          <p>Steady progress in short sessions, without ruining the game.</p>
+
+          <div class="help">
+            <div class="label">HOW WE HELP</div>
+            <p>SecondSeat turns stuck moments into 1–3 line answers that get players moving again, fast.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Persona 02 -->
+      <div class="persona">
+        <div class="persona-head">
+          <span><span class="id">PERSONA_02</span> &nbsp;//&nbsp; LV 42</span>
+          <span>SESSION 1–3 HRS</span>
+        </div>
+        <div class="persona-body">
+          <h3>The Retro Explorer</h3>
+          <div class="class">CLASS · CLASSICS COMPLETIONIST</div>
+
+          <div class="stat-row"><span>FRUSTRATION</span><span>MEDIUM</span></div>
+          <div class="bar"><span class="fill"></span><span class="fill"></span><span class="fill"></span><span class="fill"></span><span></span><span></span><span></span><span></span></div>
+
+          <div class="stat-row"><span>NOSTALGIA</span><span>MAX</span></div>
+          <div class="bar"><span class="fill"></span><span class="fill"></span><span class="fill"></span><span class="fill"></span><span class="fill"></span><span class="fill"></span><span class="fill"></span><span class="fill"></span></div>
+
+          <div class="label">PAIN POINTS</div>
+          <p>Long, dense RPG guides. Missing manual-era context. Obscure puzzles. Outdated sources.</p>
+
+          <div class="label" style="margin-top:18px;">GOALS</div>
+          <p>Finish classics with enough context to progress, while preserving discovery.</p>
+
+          <div class="help">
+            <div class="label">HOW WE HELP</div>
+            <p>SecondSeat repackages old guide knowledge into spoiler-aware hints for the current moment.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="footbar"><span>SECONDSEAT &nbsp;·&nbsp; CHAPTER 03</span><span class="lime mono">PARTY MEMBERS LOADED</span></div>
+</section>
+
+<!-- ============ SLIDE 4 — THE HOW ============ -->
+<section data-screen-label="04 The How">
+  <div class="frame"><i></i><b></b></div>
+  <div class="slide-id mono">PLAYER_04 / 08</div>
+
+  <div class="pad">
+    <p class="eyebrow mono">THE HOW</p>
+    <h2 class="title">Five steps from <em>question</em> to <em>unstuck.</em></h2>
+
+    <div class="steps">
+      <div class="step">
+        <div class="lvl">LV.01</div>
+        <div class="num mono">01</div>
+        <h4>Select Game</h4>
+        <p>Player opens SecondSeat in the browser and picks the game they're currently playing.</p>
+        <span class="arrow"></span>
+      </div>
+      <div class="step">
+        <div class="lvl">LV.02</div>
+        <div class="num mono">02</div>
+        <h4>Ask a Question</h4>
+        <p>Voice or text: "I'm in the Water Temple — where do I go next, no spoilers?"</p>
+        <span class="arrow"></span>
+      </div>
+      <div class="step">
+        <div class="lvl">LV.03</div>
+        <div class="num mono">03</div>
+        <h4>Context Assembly</h4>
+        <p>Combines the game, session history, and structured guide data into a grounded request.</p>
+        <span class="arrow"></span>
+      </div>
+      <div class="step">
+        <div class="lvl">LV.04</div>
+        <div class="num mono">04</div>
+        <h4>Micro-Hint Delivered</h4>
+        <p>Returns 1–3 lines that nudge the player forward without revealing what's ahead.</p>
+        <span class="arrow"></span>
+      </div>
+      <div class="step">
+        <div class="lvl">LV.05</div>
+        <div class="num mono">05</div>
+        <h4>Follow-Up Ready</h4>
+        <p>Player can dig deeper with a follow-up or request spoken output — no tab switching.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="footbar"><span>SECONDSEAT &nbsp;·&nbsp; CHAPTER 04</span><span class="lime mono">QUEST CHAIN COMPLETE</span></div>
+</section>
+
+<!-- ============ SLIDE 5 — ARCHITECTURE ============ -->
+<section data-screen-label="05 Architecture">
+  <div class="frame"><i></i><b></b></div>
+  <div class="slide-id mono">PLAYER_05 / 08</div>
+
+  <div class="pad">
+    <p class="eyebrow mono">ARCHITECTURE</p>
+    <h2 class="title">RAG + LLM inference, <em>kept simple.</em></h2>
+
+    <div class="arch-wrap">
+      <div class="arch-layer">
+        <h4><span>LAYER 01 · APPLICATION</span><span class="tag">RUNTIME</span></h4>
+        <div class="nodes cols-2">
+          <div class="node">
+            <span class="key">// WEB UI</span>
+            <span class="name">Web UI</span>
+            <span class="desc">Game select, voice / text input, session display.</span>
+          </div>
+          <div class="node">
+            <span class="key">// ORCHESTRATOR</span>
+            <span class="name">Query Orchestrator</span>
+            <span class="desc">Assembles game context, session memory, and system prompt.</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="arch-layer">
+        <h4><span>LAYER 02 · AI &amp; RETRIEVAL (RAG)</span><span class="tag">GROUNDED</span></h4>
+        <div class="nodes cols-4">
+          <div class="node">
+            <span class="key">// INGEST</span>
+            <span class="name">Guide Ingestion</span>
+            <span class="desc">Parses markdown / HTML guides; cleans and stores.</span>
+          </div>
+          <div class="node">
+            <span class="key">// VECTOR DB</span>
+            <span class="name">Vector Database</span>
+            <span class="desc">Chunked guide embeddings for fast similarity search.</span>
+          </div>
+          <div class="node">
+            <span class="key">// RETRIEVE</span>
+            <span class="name">RAG Retrieval</span>
+            <span class="desc">Fetches the most relevant passages per question.</span>
+          </div>
+          <div class="node">
+            <span class="key">// INFERENCE</span>
+            <span class="name">LLM Inference</span>
+            <span class="desc">Generates a spoiler-safe micro-hint from retrieved context.</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="arch-note mono">// Offline content indexing is separated from live inference — runtime stays lightweight, responses stay grounded.</div>
+    </div>
+  </div>
+
+  <div class="footbar"><span>SECONDSEAT &nbsp;·&nbsp; CHAPTER 05</span><span class="lime mono">SYSTEM ▸ STABLE</span></div>
+</section>
+
+<!-- ============ SLIDE 6 — BUSINESS MODEL ============ -->
+<section data-screen-label="06 Business Model">
+  <div class="frame"><i></i><b></b></div>
+  <div class="slide-id mono">PLAYER_06 / 08</div>
+
+  <div class="pad">
+    <p class="eyebrow mono">BUSINESS MODEL</p>
+    <h2 class="title">Freemium foundation, <em>Patreon-first</em> monetization.</h2>
+
+    <div class="tiers">
+      <div class="tier">
+        <div class="lvl mono">// TIER 00</div>
+        <h3>Free / Starter</h3>
+        <div class="price">COST · $0 &nbsp;//&nbsp; UNLOCKED FOR ALL</div>
+        <ul>
+          <li>Limited daily hints</li>
+          <li>One active session</li>
+          <li>Core spoiler-safe guidance</li>
+          <li>Experience the value first</li>
+        </ul>
+        <div class="pixel-row">ENTRY LEVEL · ALWAYS ON</div>
+      </div>
+
+      <div class="tier featured">
+        <div class="lvl mono">// TIER 01 · ★ FEATURED</div>
+        <h3>Supporter</h3>
+        <div class="price">PATREON TIER 1</div>
+        <ul>
+          <li>More sessions &amp; longer memory</li>
+          <li>Early access to supported games</li>
+          <li>Project updates &amp; dev logs</li>
+          <li>Help SecondSeat grow</li>
+        </ul>
+        <div class="pixel-row">UNLOCK · DEEPER PLAY</div>
+      </div>
+
+      <div class="tier">
+        <div class="lvl mono">// TIER 02</div>
+        <h3>Creator Circle</h3>
+        <div class="price">PATREON TIER 2</div>
+        <ul>
+          <li>Deeper access &amp; perks</li>
+          <li>Roadmap input &amp; voting</li>
+          <li>Behind-the-scenes dev updates</li>
+          <li>Future creator/community features</li>
+        </ul>
+        <div class="pixel-row">PRESTIGE · INSIDER</div>
+      </div>
+    </div>
+
+    <div class="gtm">
+      <span class="tag">GO-TO-MARKET ▸</span>
+      Retro &amp; long-form gaming communities &nbsp;→&nbsp; creator demos &nbsp;→&nbsp; word-of-mouth growth loop.
+    </div>
+  </div>
+
+  <div class="footbar"><span>SECONDSEAT &nbsp;·&nbsp; CHAPTER 06</span><span class="lime mono">+ XP EARNED</span></div>
+</section>
+
+<!-- ============ SLIDE 7 — SCOPE ============ -->
+<section data-screen-label="07 Scope &amp; MVP">
+  <div class="frame"><i></i><b></b></div>
+  <div class="slide-id mono">PLAYER_07 / 08</div>
+
+  <div class="pad">
+    <p class="eyebrow mono">SCOPE &amp; MVP</p>
+    <h2 class="title">One game. One area. <em>One believable scenario.</em></h2>
+
+    <div class="scope-grid">
+      <div class="scope-col in">
+        <h4><span class="ico mono">[+]</span><span>IN SCOPE — MVP</span></h4>
+        <ul>
+          <li>Game selection interface</li>
+          <li>Voice or text question input</li>
+          <li>RAG retrieval from structured guide data</li>
+          <li>1–3 line spoiler-safe hint responses</li>
+          <li>Lightweight session memory for follow-ups</li>
+        </ul>
+      </div>
+
+      <div class="scope-col out">
+        <h4><span class="ico mono">[×]</span><span>DEFERRED — POST-MVP</span></h4>
+        <ul>
+          <li>Multi-game or broad game coverage</li>
+          <li>Social / community features</li>
+          <li>Deep game integrations or overlays</li>
+          <li>Mobile native app</li>
+          <li>Third-party guide source dependence</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="winstate">
+      <span class="tag">▶ WIN CONDITION</span>
+      MVP succeeds if players prefer micro-hints over searching Google, a wiki, or a video.
+    </div>
+  </div>
+
+  <div class="footbar"><span>SECONDSEAT &nbsp;·&nbsp; CHAPTER 07</span><span class="lime mono">SAVE POINT REACHED</span></div>
+</section>
+
+<!-- ============ SLIDE 8 — OUTRO ============ -->
+<section data-screen-label="08 Outro" class="s-out">
+  <div class="frame"><i></i><b></b></div>
+  <div class="slide-id mono">PLAYER_08 / 08</div>
+
+  <div class="pad">
+    <div class="stamp mono">▸ END SCREEN &nbsp;//&nbsp; THANKS FOR PLAYING</div>
+    <h2 class="big">
+      <em>Just enough help.</em><br/>
+      <span class="at">At the right moment.</span>
+    </h2>
+    <p class="body">SecondSeat is a focused AI companion built around one product philosophy: grounded, flow-preserving guidance that reduces friction instead of adding it.</p>
+  </div>
+
+  <div class="sig">
+    <span>ROBERTO&nbsp;J.&nbsp;ASINO &nbsp;//&nbsp; SECONDSEAT &nbsp;//&nbsp; 2026</span>
+    <span class="pixel">▶ CONTINUE?</span>
+  </div>
+</section>
+
+</deck-stage>
+</body>
+</html>
