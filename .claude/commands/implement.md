@@ -24,4 +24,4 @@ When implementation is complete:
    - Files created or modified
    - Tests written (file paths and what they cover)
    - Any deviations from the spec (if none, say so explicitly)
-   - Signal: `Ready for integration testing.`
+   - Signal: `Ready for acceptance testing.`

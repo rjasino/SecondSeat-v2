@@ -12,15 +12,16 @@ Built for a **5-week competition sprint** (SG Tech Week product challenge, submi
 
 ## 🚦 Mandatory Workflow — Read This First
 
-Every non-trivial request (new feature, bug fix, refactor, schema change) follows the **4-phase gated workflow** below. Do NOT skip phases. Do NOT bundle them. Each phase ends at a hard gate that requires an explicit human signal before the next phase begins.
+Every non-trivial request (new feature, bug fix, refactor, schema change) follows the **5-phase gated workflow** below. Do NOT skip phases. Do NOT bundle them. Each phase ends at a hard gate that requires an explicit human signal before the next phase begins.
 
 ```
-  ┌──────────┐   clarify   ┌──────────┐   approve   ┌────────┐   proceed   ┌─────────────┐
-  │  /task   │ ──────────► │  /spec   │ ──────────► │  /log  │ ──────────► │  /implement │
-  └──────────┘             └──────────┘             └────────┘             └─────────────┘
-   Clarify Q&A              Spec doc                 CHANGELOG +              Backend →
-   No code                  No code                  decisions.md             Frontend →
-                            No code                  No code                  Unit tests
+  ┌──────────┐   clarify   ┌──────────┐   approve   ┌────────┐   proceed   ┌─────────────┐   acceptance   ┌───────┐   all clear   ┌─────────┐
+  │  /task   │ ──────────► │  /spec   │ ──────────► │  /log  │ ──────────► │  /implement │ ─────────────► │ /test │ ────────────► │ /commit │
+  └──────────┘             └──────────┘             └────────┘             └─────────────┘                └───────┘               └─────────┘
+   Clarify Q&A              Spec doc                 CHANGELOG +              Backend →                     E2E (automated)         Commit
+   No code                  No code                  decisions.md             Frontend →                    + manual
+                            No code                  No code                  Unit tests +                  integration &
+                                                                              integration tests              acceptance
 ```
 
 ### Phase 1 — Clarify (`/task`)
@@ -46,10 +47,17 @@ Every non-trivial request (new feature, bug fix, refactor, schema change) follow
 ### Phase 4 — Implement (`/implement`)
 
 - **Trigger:** user replies `proceed`.
-- **Order:** Backend → Frontend → Unit tests. Follow `.claude/rules/coding.md`, `.claude/rules/security.md`, `.claude/rules/testing.md`.
+- **Order:** Backend → Frontend → Unit tests → automated integration tests. Follow `.claude/rules/coding.md`, `.claude/rules/security.md`, `.claude/rules/testing.md`.
 - **Stay in scope.** If something requires a scope change, STOP and flag it — do not silently expand.
-- **End-of-phase output:** files changed, tests written, deviations from spec (or "none"), then signal: `Ready for integration testing.`
-- **Gate:** user performs integration / B2B testing manually. That is the final confirmation that the task is done.
+- **End-of-phase output:** files changed, tests written, deviations from spec (or "none"), then signal: `Ready for acceptance testing.`
+- **Gate:** user must confirm before moving to Phase 5.
+
+### Phase 5 — Test (`/test`)
+
+- **Trigger:** user confirms Phase 4 is done.
+- **Action:** run automated E2E tests where they exist; perform manual integration and acceptance testing against the running app.
+- **End-of-phase output:** what was tested, pass/fail status, then signal: `All acceptance checks passed. Ready to commit.`
+- **Gate:** user must confirm before running `/commit`. This is the final sign-off that the task is done.
 
 ### When to skip the workflow
 
@@ -63,11 +71,13 @@ If you are unsure whether something qualifies as trivial, **default to running `
 
 ### Signal vocabulary (what the gates listen for)
 
-| Gate          | User says one of…                                     |
-| :------------ | :---------------------------------------------------- |
-| After `/task` | "yes", "correct", "proceed to spec", "write the spec" |
-| After `/spec` | "approved", "approve", "lgtm"                         |
-| After `/log`  | "proceed", "go", "implement"                          |
+| Gate               | User says one of…                                     |
+| :----------------- | :---------------------------------------------------- |
+| After `/task`      | "yes", "correct", "proceed to spec", "write the spec" |
+| After `/spec`      | "approved", "approve", "lgtm"                         |
+| After `/log`       | "proceed", "go", "implement"                          |
+| After `/implement` | any confirmation that implementation is done          |
+| After `/test`      | any confirmation that acceptance checks passed        |
 
 Anything ambiguous → ask, don't assume. A wrong-phase action (e.g. coding before the log gate) is worse than a clarifying question.
 
@@ -89,7 +99,7 @@ Monorepo with three apps scaffolded under `apps/` (web, inference, workers). Ing
 
 - `docs/` — source of truth for product and architecture decisions. Read before guessing.
 - `docs/specs/` — approved and draft spec documents (one per feature/task).
-- `.claude/commands/` — `/task`, `/spec`, `/log`, `/implement`, `/bug-triage`, `/commit` slash commands. The first four drive the 4-phase workflow; `/bug-triage` handles ad-hoc bug investigation; `/commit` writes clean conventional-commit messages.
+- `.claude/commands/` — `/task`, `/spec`, `/log`, `/implement`, `/test`, `/commit`, `/bug-triage` slash commands. The first five drive the 5-phase workflow; `/bug-triage` handles ad-hoc bug investigation; `/commit` writes clean conventional-commit messages.
 - `.claude/rules/` — coding, security, and testing standards.
 
 ## Source-of-Truth Documents
