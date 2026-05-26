@@ -4,6 +4,12 @@
   color-scheme: dark;
 }
 
+/* Amber "deleting" status badge — distinct from green/blue/red status badges */
+.badge--deleting {
+  color: #d97706;
+  background-color: rgba(217, 119, 6, 0.15);
+}
+
 html,
 body {
   height: 100%;

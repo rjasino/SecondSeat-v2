@@ -35,6 +35,30 @@ async function getCollection(chromaUrl: string, collectionName: string): Promise
 }
 
 /**
+ * Delete all vectors for a source by metadata filter.
+ * Treats a missing or empty collection as a no-op (idempotent).
+ *
+ * Throws on ChromaDB errors so BullMQ can track retries.
+ */
+export async function deleteVectorsBySourceId(params: {
+  chromaUrl: string;
+  collectionName: string;
+  sourceId: string;
+}): Promise<void> {
+  const { chromaUrl, collectionName, sourceId } = params;
+
+  let collection: Collection;
+  try {
+    collection = await getCollection(chromaUrl, collectionName);
+  } catch {
+    // Collection does not exist — no vectors to delete
+    return;
+  }
+
+  await collection.delete({ where: { sourceId } });
+}
+
+/**
  * Upsert a single chunk vector into ChromaDB.
  * The stable ID `<sourceId>_<chunkIndex>` ensures re-ingestion replaces rather than duplicates.
  *

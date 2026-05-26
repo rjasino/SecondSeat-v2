@@ -26,6 +26,7 @@ export default function LoginPage() {
 
       if (res.ok) {
         const user = (await res.json()) as { role: string };
+        router.refresh(); // invalidate RSC cache so NavBanner re-renders with the new session
         router.push(user.role === 'user' ? '/' : '/ingest');
       } else if (res.status === 401) {
         setError('Invalid email or password.');
