@@ -1,4 +1,4 @@
-import mongoose, { type Document, Schema, model } from 'mongoose';
+import mongoose, { type Document, Schema, model } from "mongoose";
 
 export interface IGame extends Document {
   title: string;
@@ -14,7 +14,7 @@ export interface IGame extends Document {
 const gameSchema = new Schema<IGame>(
   {
     title: { type: String, required: true },
-    slug: { type: String, required: true, unique: true },
+    slug: { type: String, required: true },
     developer: { type: String, required: true },
     releaseYear: { type: Number, required: true },
     genre: { type: String, required: true },
@@ -26,4 +26,5 @@ const gameSchema = new Schema<IGame>(
 gameSchema.index({ slug: 1 }, { unique: true });
 
 export const Game =
-  (mongoose.models['Game'] as mongoose.Model<IGame>) || model<IGame>('Game', gameSchema);
+  (mongoose.models["Game"] as mongoose.Model<IGame>) ||
+  model<IGame>("Game", gameSchema);

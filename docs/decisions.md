@@ -4,6 +4,40 @@ Architecture and product decisions for SecondSeat, in reverse chronological orde
 
 ---
 
+## 2026-05-26 — Auth module: user roles, route protection & seed script
+
+**Context**
+The ingestion pipeline (Epic I) is in place but every route is effectively open — the `ingest/layout.tsx` performs a basic role check but there is no login flow, no session-creation endpoint, and no middleware to enforce route access. Regular users, authors, and admins all have distinct access boundaries, and a seed script is required because privileged accounts cannot self-register. Before any inference or player-facing work begins, authenticated identity must be a first-class concern. Spec: [auth-module](specs/2026-05-26SPEC-auth-module.md).
+
+**Decision**
+
+- **`iron-session` for session management.** The session infrastructure (`lib/session.ts`, `SessionUser` type, `sessionOptions`) was already scaffolded in Epic I-A. The auth module builds directly on it with two new Route Handlers (`POST /api/auth/login`, `POST /api/auth/register`). No JWT, no NextAuth — `iron-session` provides signed-and-encrypted `httpOnly` cookies with minimal surface area, matching the security rules.
+- **`argon2` for password hashing.** Per `security.md`, `argon2` is the mandated hashing library (memory-hard, PHC winner, more GPU-resistant than bcrypt). Added to both `apps/web` (route handlers) and `packages/db` (seed script).
+- **No self-registration for `"author"` or `"admin"`.** The `/register` endpoint hard-codes `role: "user"`. Privileged accounts are provisioned exclusively via the seed script using env vars. This eliminates a privilege-escalation surface with zero config overhead.
+- **`profile.displayName` synced on register and seed.** Both the top-level `user.name` and `user.profile.displayName` are written to the same value at account creation time. The session and banner use `user.name` (required, always present); `profile.displayName` is kept in sync so future profile pages do not need a migration.
+- **Next.js Edge middleware for route protection.** A single `middleware.ts` at the `apps/web` root intercepts all relevant routes. `/ingest/*` redirects both unauthenticated visitors and `role: "user"` sessions to `/login`. `/login` and `/register` redirect already-authenticated users to their role's home, preventing double-session states.
+- **`role: "user"` on `/ingest/*` redirects to `/login` (not `/`).** Consistent redirect target for any unauthorized access to the ingest area — simpler mental model than role-conditional redirect targets, and avoids confusion where a regular user might think they should be on `/`.
+- **Seed script in `packages/db/scripts/`** with `tsx` as the runner (already used in `apps/workers`). Idempotent by design: checks email existence before insert and skips with a log line. Exits with non-zero code if any required env var is missing — fail-fast before touching the database.
+- **`packages/db` gets `tsx` as a devDependency.** The package had no devDependencies previously. Adding `tsx` here keeps the seed script self-contained and avoids requiring a workspace-level runner install.
+
+**Alternatives considered**
+
+- **NextAuth / Auth.js.** Rejected — significant abstraction overhead for a solo MVP sprint. `iron-session` + custom Route Handlers gives full control with ~50 lines of code and zero magic. Can be layered on later if OAuth providers are added.
+- **JWT stored in `localStorage`.** Rejected — `security.md` explicitly prohibits storing auth tokens in `localStorage`. `iron-session` `httpOnly` cookies are the mandated approach.
+- **bcrypt for password hashing.** Rejected — `security.md` mandates `argon2`.
+- **Redirect `role: "user"` on `/ingest/*` to `/` rather than `/login`.** Rejected — the user confirmed `/login` is the correct redirect for both unauthenticated and unauthorized-role access to the ingest area. A single redirect target is simpler.
+- **Seed script in root `scripts/` folder.** Rejected — the seed script's only concern is the `@secondseat/db` package (Mongoose connection, User model). Collocating it in `packages/db/scripts/` makes the dependency boundary explicit.
+- **Admin-creates-users UI.** Out of scope for MVP — env-var seed is sufficient for the competition sprint timeline.
+
+**Consequences**
+
+- `argon2` is a native addon (compiles on install). Adds a compile step to CI and requires build tools (`node-gyp`) in the environment. Acceptable trade-off for the security benefit; the Docker-based CI/dev setup already has build tools available.
+- The ingest layout's existing role check (`ingest/layout.tsx`) becomes partially redundant once middleware is in place. It should be kept as a defence-in-depth layer, but the middleware is now the authoritative enforcement point.
+- `/api/auth/login` and `/api/auth/register` are rate-limit candidates — not wired in this task (no rate-limit middleware on `apps/web` Route Handlers yet). Follow-up: add `express-rate-limit` equivalent (or a Next.js middleware rate-limit) to auth endpoints before any public deployment.
+- Seed accounts use names defaulting to `"Admin"` and `"Author"`. If operators need custom display names, they must update the MongoDB document directly after seeding — env vars for names were explicitly out of scope.
+
+---
+
 ## 2026-05-26 — Ingestion pipeline: source intake, job lifecycle, worker pipeline
 
 **Context**

@@ -11,6 +11,7 @@
     "dev:web": "npm run dev --workspace=@secondseat/web",
     "dev:inference": "npm run dev --workspace=@secondseat/inference",
     "dev:workers": "npm run dev --workspace=@secondseat/workers",
+    "seed:default": "tsx --env-file=packages/db/.env packages/db/scripts/seed-admins.ts",
     "build": "npm run build --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present"

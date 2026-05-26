@@ -29,7 +29,7 @@ export default async function NavBanner() {
           </>
         ) : (
           <a
-            href="/"
+            href="/login"
             className="rounded bg-neutral-800 px-3 py-1 text-neutral-200 transition hover:bg-neutral-700"
           >
             Login

@@ -6,6 +6,60 @@ All notable changes to SecondSeat are documented here. Format loosely follows [K
 
 ## Unreleased
 
+### Added — Auth Module: User Roles, Route Protection & Seed Script (spec: [auth-module](specs/2026-05-26SPEC-auth-module.md))
+
+#### New pages (`apps/web`)
+
+- `apps/web/src/app/login/page.tsx` — public login page; email + password form; redirects `"user"` → `/`, `"author"`/`"admin"` → `/ingest` on success
+- `apps/web/src/app/register/page.tsx` — public registration page; name, email, password, confirm-password form; always creates `role: "user"`; redirects to `/` on success
+- `apps/web/src/app/page.tsx` — upgraded from scaffold placeholder to role-aware landing: logged-in `"user"` sees display name banner + logout button; unauthenticated visitors see a login prompt
+
+#### New middleware (`apps/web`)
+
+- `apps/web/src/middleware.ts` — Next.js Edge middleware enforcing route protection:
+  - `/ingest/*` — unauthenticated or `role: "user"` → redirect `/login`; `"author"`/`"admin"` → pass through
+  - `/login`, `/register` — already-authenticated users redirected to their role's home (`"user"` → `/`, `"author"`/`"admin"` → `/ingest`)
+  - `/` — passes through unconditionally; page handles role-conditional rendering server-side
+
+#### New API routes (`apps/web`)
+
+- `apps/web/src/app/api/auth/login/route.ts` — `POST /api/auth/login`; Zod-validated body; `argon2.verify`; writes `iron-session`; returns `SessionUser`
+- `apps/web/src/app/api/auth/register/route.ts` — `POST /api/auth/register`; Zod-validated body with password-match refinement; `argon2.hash`; inserts `User` with `role: "user"`; writes both `user.name` and `user.profile.displayName`; writes `iron-session`; returns `201 SessionUser`
+
+#### New Zod schemas (`apps/web`)
+
+- `apps/web/src/schemas/auth.ts` — `LoginSchema` and `RegisterSchema` (shared by route handlers and client-side form validation)
+
+#### New seed script (`packages/db`)
+
+- `packages/db/scripts/seed-admins.ts` — provisions one `"admin"` and one `"author"` account from env vars (`SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD`, `SEED_AUTHOR_EMAIL`, `SEED_AUTHOR_PASSWORD`); idempotent (skips if email exists); hashes passwords via `argon2`; run via `tsx --env-file=.env packages/db/scripts/seed-admins.ts`
+
+#### New dependencies
+
+- `apps/web/package.json` — adds `argon2`
+- `packages/db/package.json` — adds `argon2` (runtime), `tsx` (devDependency)
+
+#### Modified files
+
+- `apps/web/.env.example` — adds `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD`, `SEED_AUTHOR_EMAIL`, `SEED_AUTHOR_PASSWORD`
+- `packages/db/.env.example` — created; adds `MONGODB_URI`, `SEED_*` vars for seed script context
+
+#### Endpoints added
+
+| Method | Endpoint               | Auth | Description |
+|--------|------------------------|------|-------------|
+| `POST` | `/api/auth/login`      | No   | Verify credentials, write session, return `SessionUser` |
+| `POST` | `/api/auth/register`   | No   | Create `role: "user"` account, write session, return `201 SessionUser` |
+
+_(Logout `GET /api/auth/logout` was already implemented in Epic I-A.)_
+
+#### Tests added
+
+- `apps/web/src/app/api/auth/login/route.test.ts` — Supertest: `200` happy path, `401` bad credentials, `422` invalid body
+- `apps/web/src/app/api/auth/register/route.test.ts` — Supertest: `201` happy path (session written, `profile.displayName` synced), `409` duplicate email, `422` password mismatch, `422` invalid body
+
+---
+
 ### Added — Ingestion Pipeline: Source Intake, Job Lifecycle, Worker Pipeline (specs: [I-A](specs/2026-05-26SPEC-ingestion-source-intake.md) · [I-B](specs/2026-05-26SPEC-ingestion-job-lifecycle.md) · [I-C](specs/2026-05-26SPEC-ingestion-worker-pipeline.md))
 
 #### Phase 0 — `packages/db` (shared Mongoose wiring)

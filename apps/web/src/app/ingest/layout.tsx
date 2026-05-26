@@ -10,7 +10,7 @@ export default async function IngestLayout({ children }: { children: ReactNode }
   const session = await getSession();
 
   if (!session.user || !['author', 'admin'].includes(session.user.role)) {
-    redirect('/');
+    redirect('/login');
   }
 
   return <>{children}</>;
