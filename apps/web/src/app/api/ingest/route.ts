@@ -193,8 +193,8 @@ async function createSourceAndJob(params: CreateSourceAndJobParams): Promise<Nex
       'ingest',
       { sourceId: source._id.toString(), jobMongoId: jobMongoId.toString() },
       {
-        attempts: config.INGEST_MAX_FILE_BYTES > 0 ? 3 : 3, // uses env-driven default
-        backoff: { type: 'exponential', delay: 5_000 },
+        attempts: config.INGEST_JOB_MAX_RETRIES,
+        backoff: { type: 'exponential', delay: config.INGEST_JOB_BACKOFF_MS },
       },
     );
   } catch {

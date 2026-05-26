@@ -35,6 +35,22 @@ export const textIngestSchema = z.object({
 
 export type TextIngestFields = z.infer<typeof textIngestSchema>;
 
+// ─── Retry schema (PATCH /api/ingest/:sourceId/retry) ────────────────────────
+
+export const retrySchema = z.object({
+  title: z.string().min(1, 'Title is required'),
+  content: z.string().min(1, 'Content is required'),
+  metadata: z.object({
+    game: z.string().min(1, 'Game is required'),
+    area: z.string().min(1, 'Area is required'),
+    spoilerLevel: z.enum(SPOILER_LEVELS, {
+      errorMap: () => ({ message: 'spoilerLevel must be none | low | medium | high' }),
+    }),
+  }),
+});
+
+export type RetryFields = z.infer<typeof retrySchema>;
+
 // ─── Shared error response helper ─────────────────────────────────────────────
 
 export function formatZodErrors(error: z.ZodError) {

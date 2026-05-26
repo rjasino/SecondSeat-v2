@@ -6,7 +6,9 @@ const ConfigSchema = z.object({
   MONGODB_URI: z.string().url('MONGODB_URI must be a valid URL'),
   REDIS_URL: z.string().url('REDIS_URL must be a valid URL'),
   SESSION_SECRET: z.string().min(32, 'SESSION_SECRET must be at least 32 characters'),
-  INGEST_MAX_FILE_BYTES: z.coerce.number().int().positive().default(5_242_880), // 5 MB
+  INGEST_MAX_FILE_BYTES: z.coerce.number().int().positive().default(5_242_880),
+  INGEST_JOB_MAX_RETRIES: z.coerce.number().int().positive().default(3),
+  INGEST_JOB_BACKOFF_MS: z.coerce.number().int().positive().default(5_000),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;
