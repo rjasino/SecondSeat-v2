@@ -6,6 +6,55 @@ All notable changes to SecondSeat are documented here. Format loosely follows [K
 
 ## Unreleased
 
+### Added — Guide Writer UI Polish & Source Delete Pipeline (spec: [guide-writer-ui-and-source-delete-pipeline](specs/2026-05-26-SPEC-guide-writer-ui-and-source-delete-pipeline.md))
+
+Replaces the floating bubble-menu editor toolbar with a fixed static toolbar, adds a persistent autosave indicator, introduces a confirmed draft-delete flow, and swaps the instant source-record wipe for an async soft-delete pipeline that cleanly removes ChromaDB vectors before hard-deleting MongoDB records.
+
+#### New component (`apps/web`)
+
+- `apps/web/src/components/ui/confirm-dialog.tsx` — reusable `ConfirmDialog` modal component. Props: `open`, `title`, `message`, `confirmLabel`, `onConfirm`, `onCancel`, `loading?`. Closes on Escape or backdrop click. Confirm + cancel buttons disabled while `loading={true}`; confirm shows a spinner. Nothing is mounted when `open={false}`.
+
+#### Modified files (`apps/web`)
+
+- `apps/web/src/components/ingest/guide-writer-editor.tsx` (or equivalent TipTap editor component) — `BubbleMenu` removed from render tree. Static formatting toolbar added above the editor card, always visible. Toolbar buttons: Bold, Italic, Underline, Strike, Inline Code, H1, H2, H3, Bullet List, Ordered List, Blockquote, Code Block, Superscript, Subscript — grouped with dividers. Active-state styling applied (accent border + tinted background) when the corresponding mark/node is active at the cursor. Editor focus is retained after toolbar button clicks.
+- `apps/web/src/components/ingest/guide-writer-client.tsx` — autosave indicator added below the editor: shows `"Autosaved at HH:MM AM/PM"` (local time) after each successful autosave; hidden before the first save. Header save indicator states updated: `"Saving…"` during save, `"Saved ✓"` (with checkmark, not ephemeral) on success, `"Save failed — retrying…"` in danger colour on error. "Delete Draft" button added to the action row, visible only when `sourceId` is set. On click, opens `ConfirmDialog`; on confirm, calls `DELETE /api/ingest/drafts/:sourceId`; on `204` redirects to `/dashboard/ingest`; on error shows inline error message in the action area.
+- `apps/web/src/app/ingest/[sourceId]/page.tsx` (source detail page) — "Delete" button wired to `ConfirmDialog`. On confirm calls `DELETE /api/ingest/sources/:sourceId`; on `202` starts polling for `"deleting"` status. Button disabled when `status === "deleting"` or `status === "processing"`. Shows `"Deleting…"` status badge (amber, `badge--deleting` CSS class: `#d97706` text, `rgba(217,119,6,0.15)` background) while async delete is in progress. On `404` during polling, redirects to `/dashboard/ingest`.
+
+#### New API routes (`apps/web`)
+
+- `apps/web/src/app/api/ingest/drafts/[sourceId]/route.ts` — `DELETE /api/ingest/drafts/:sourceId`. Auth: admin. Validates `status === "draft"`. Hard-deletes the `RagSource` document. Returns `204`. Errors: `401`, `403`, `404`, `409` (status not draft).
+- `apps/web/src/app/api/ingest/sources/[sourceId]/route.ts` — `DELETE /api/ingest/sources/:sourceId`. Auth: admin. Sets `source.status = "deleting"` and saves `previousStatus`. Enqueues a `delete-source` BullMQ job. Returns `202 { jobId }`. Idempotent if already `"deleting"` (returns `202`, no duplicate enqueue). Returns `409` if `status === "processing"`. Errors: `401`, `403`, `404`.
+
+#### New worker processor (`apps/workers`)
+
+- `apps/workers/src/queues/delete-source.queue.ts` — BullMQ `delete-source` queue definition and `DeleteSourceJobData` interface (`{ sourceId: string }`).
+- `apps/workers/src/processors/delete-source.processor.ts` — job processor: queries ChromaDB for vectors by metadata filter `{ source_id: sourceId }` and deletes them (no-op if no vectors found — idempotent). Hard-deletes the `RagSource` document and all associated `RagIngestionJob` documents from MongoDB. On BullMQ retry exhaustion, resets `source.status` to `previousStatus` (stored on the document), logs the error, and rethrows so BullMQ tracks the failure correctly.
+- `apps/workers/src/index.ts` — updated to register the `delete-source` queue worker on startup.
+
+#### Schema changes (`packages/db`)
+
+- `packages/db/src/models/rag-source.model.ts` — `status` field extended with `"deleting"` as a valid enum value. New optional field `previousStatus: string | null` — written when transitioning to `"deleting"`, used by the worker to restore status on failure, moot after hard-delete.
+
+#### CSS additions (`apps/web`)
+
+- `badge--deleting` CSS class added (amber: `#d97706` text, `rgba(217,119,6,0.15)` background) to the shared badge style sheet — distinct from green (completed), blue (processing), and red (failed).
+
+#### Endpoints added
+
+| Method | Endpoint                               | Auth     | Description                                                                                                     |
+| ------ | -------------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------- |
+| DELETE | `/api/ingest/drafts/:sourceId`         | ✅ admin | Hard-delete a draft source (`status === "draft"`). Returns `204`.                                               |
+| DELETE | `/api/ingest/sources/:sourceId`        | ✅ admin | Soft-delete: set `status="deleting"`, enqueue worker. Returns `202 { jobId }`. Idempotent. `409` if processing. |
+
+#### Tests added
+
+- `apps/web/src/components/ui/confirm-dialog.test.tsx` — Escape/backdrop close, `loading` disables buttons, `open={false}` mounts nothing.
+- `apps/web/src/app/api/ingest/drafts/[sourceId]/route.test.ts` — `204` happy path, `409` non-draft guard, `401`/`403` auth enforcement, `404` not found.
+- `apps/web/src/app/api/ingest/sources/[sourceId]/route.test.ts` — `202` accepted, `202` idempotent (already deleting), `409` processing guard, `401`/`403` auth enforcement, `404` not found.
+- `apps/workers/src/processors/delete-source.processor.test.ts` — vectors deleted then MongoDB hard-delete, no-vector no-op, status reset on retry exhaustion, error rethrow.
+
+---
+
 ### Changed — Auth Module Alignment to Spec 2 Contract (spec: [auth-alignment](specs/2026-05-26SPEC-auth-alignment.md))
 
 Reconciles the existing auth implementation with the approved Spec 2 contract. No new Mongoose fields; the only type change is `SessionUser` in `apps/web/src/lib/session.ts`.

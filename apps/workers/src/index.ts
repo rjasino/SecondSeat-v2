@@ -5,6 +5,8 @@ import { loadConfig } from './config/index.js';
 import { createHealthServer } from './health.js';
 import { processIngestionJob } from './processors/ingestion.processor.js';
 import type { IngestionJobData } from './processors/ingestion.types.js';
+import { processDeleteSourceJob } from './processors/delete-source.processor.js';
+import type { DeleteSourceJobData } from './processors/delete-source.types.js';
 
 const config = loadConfig();
 
@@ -32,6 +34,27 @@ ingestionWorker.on('completed', (job) => {
 
 ingestionWorker.on('failed', (job, err) => {
   console.error(`[workers] ingestion job ${job?.id} failed:`, err.message);
+});
+
+const deleteSourceWorker = new Worker<DeleteSourceJobData>(
+  'delete-source',
+  (job) =>
+    processDeleteSourceJob(job, {
+      chromaUrl: config.CHROMA_URL,
+      collectionName: config.CHROMA_COLLECTION_NAME,
+    }),
+  {
+    connection,
+    concurrency: 1,
+  },
+);
+
+deleteSourceWorker.on('completed', (job) => {
+  console.log(`[workers] delete-source job ${job.id} completed`);
+});
+
+deleteSourceWorker.on('failed', (job, err) => {
+  console.error(`[workers] delete-source job ${job?.id} failed:`, err.message);
 });
 
 const server = createHealthServer();

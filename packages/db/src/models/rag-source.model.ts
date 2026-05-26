@@ -1,7 +1,7 @@
 import mongoose, { type Document, type Types, Schema, model } from 'mongoose';
 
 export type SourceType = 'file' | 'url' | 'text';
-export type SourceStatus = 'idle' | 'queued' | 'processing' | 'completed' | 'failed';
+export type SourceStatus = 'draft' | 'idle' | 'queued' | 'processing' | 'completed' | 'failed' | 'deleting';
 export type SpoilerLevel = 'none' | 'low' | 'medium' | 'high';
 
 export interface ISourceMetadata {
@@ -19,6 +19,7 @@ export interface IRagSource extends Document {
   createdBy: Types.ObjectId;
   metadata?: ISourceMetadata;
   status: SourceStatus;
+  previousStatus?: string | null;
   startedAt?: Date;
   finishedAt?: Date;
   createdAt: Date;
@@ -35,10 +36,11 @@ const ragSourceSchema = new Schema<IRagSource>(
     metadata: { type: Schema.Types.Mixed },
     status: {
       type: String,
-      enum: ['idle', 'queued', 'processing', 'completed', 'failed'],
+      enum: ['draft', 'idle', 'queued', 'processing', 'completed', 'failed', 'deleting'],
       required: true,
       default: 'queued',
     },
+    previousStatus: { type: String, default: null },
     startedAt: { type: Date },
     finishedAt: { type: Date },
   },

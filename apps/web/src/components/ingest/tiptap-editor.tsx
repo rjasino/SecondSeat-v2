@@ -49,10 +49,7 @@ export default function TipTapEditor({ initialContent = '', onChange, placeholde
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
-        // heading levels 1-3
         heading: { levels: [1, 2, 3] },
-        // disable bold — not in spec toolbar
-        bold: false,
       }),
       Underline,
       Superscript,
@@ -108,6 +105,13 @@ export default function TipTapEditor({ initialContent = '', onChange, placeholde
         <span className="mx-1 border-l border-neutral-600" />
 
         {/* Inline marks */}
+        <ToolbarButton
+          onClick={() => editor.chain().focus().toggleBold().run()}
+          active={editor.isActive('bold')}
+          title="Bold"
+        >
+          <strong>B</strong>
+        </ToolbarButton>
         <ToolbarButton
           onClick={() => editor.chain().focus().toggleItalic().run()}
           active={editor.isActive('italic')}
