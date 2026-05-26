@@ -18,6 +18,7 @@
     "@tiptap/pm": "^3.23.6",
     "@tiptap/react": "^3.23.6",
     "@tiptap/starter-kit": "^3.23.6",
+    "argon2": "^0.44.0",
     "bullmq": "^5.77.3",
     "ioredis": "^5.10.1",
     "iron-session": "^8.0.4",

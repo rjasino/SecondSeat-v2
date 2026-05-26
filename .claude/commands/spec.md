@@ -3,7 +3,7 @@ name: spec
 description: Generate a spec document from clarified requirements
 ---
 
-Based on the clarified task, create a spec document and save it to `docs/specs/<YYYY-MM-DD>SPEC-<task-slug>.md`.
+Based on the clarified task, create a spec document and save it to `docs/specs/<YYYY-MM-DD>-SPEC-<task-slug>.md`.
 
 Use this format exactly. Fill in every section — if a section does not apply, write "N/A" with a one-line reason rather than deleting it. Leave the **Open Questions** section populated with any remaining ambiguity or assumption that still needs owner confirmation.
 

@@ -35,7 +35,7 @@ export async function GET(
     if (!source) {
       return NextResponse.json({ error: 'Job not found' }, { status: 404 });
     }
-    if (source.createdBy.toString() !== session.user.id) {
+    if (source.createdBy.toString() !== session.user.userId) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 

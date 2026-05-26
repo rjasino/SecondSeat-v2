@@ -4,6 +4,74 @@ Architecture and product decisions for SecondSeat, in reverse chronological orde
 
 ---
 
+## 2026-05-26 — Auth alignment: Spec 2 contract reconciliation
+
+**Context**
+The initial auth implementation (login, register, logout, middleware, NavBanner, seed script) shipped against an earlier spec draft. Spec 2 (`2026-05-26SPEC-auth-module-2.md`) tightened the API contract in several ways: leaner session payload (no PII in the encrypted cookie), machine-readable response shapes, a missing `/api/auth/me` identity endpoint, logout via POST (not GET) to prevent CSRF-style prefetch triggering, a stricter 12-character password minimum, role-aware NavBanner with login/register links and an ingestion link for elevated roles, and seed script improvements (display name env vars, early password validation). All of these were confirmed in task clarification as in-scope for this alignment task. Spec: [auth-alignment](specs/2026-05-26SPEC-auth-alignment.md).
+
+**Decision**
+
+- **Slim `SessionUser` to `{ userId, role }` only.** PII (email, displayName) baked into an encrypted cookie is unnecessary risk — if the cookie is ever mis-configured (not `httpOnly`, wrong `secure` flag), PII leaks. Consumers that need name/email now call `GET /api/auth/me` or do a DB lookup directly. Field `id` → `userId` to make the semantics explicit (MongoDB `_id.toString()`).
+- **New `GET /api/auth/me` endpoint backed by a `cache()`-wrapped helper.** Rather than embedding display data in the session, components fetch it on demand. Next.js `cache()` deduplicates the `User.findById` call within a single server render tree, so NavBanner and any layout component reading the same user pay only one DB round-trip per request. If the user document is missing (deleted after session was issued), the endpoint destroys the stale session and returns `401`.
+- **Logout converted to `POST`.** A `GET /api/auth/logout` can be triggered by link prefetching, an `<img>` tag, a CSRF probe, or any browser that eagerly fetches `href` values. `POST` cannot. NavBanner logout is implemented via `<form method="post" action="/api/auth/logout">` — no client JS required, works with Server Components.
+- **Response bodies stripped to `{ ok, role }` for login/register.** The previous implementation returned the full `SessionUser` object in the JSON body. Nothing on the client actually needed `email` or `displayName` from the body (they were being read from the session or re-fetched). Lean bodies reduce the surface for accidental logging of PII in server logs.
+- **Password minimum raised to 12 characters (schema + seed).** Matches the Spec 2 contract. Applied at the Zod schema boundary for new registrations and validated in the seed script before DB connection. Existing users are unaffected.
+- **`confirmPassword` removed from the server-side Zod schema.** The field adds no security value at the API layer (only one password field is ever hashed). The register UI retains a client-side confirm field for UX, but the API call sends only `{ name, email, password }`, eliminating a field that the backend was previously required to validate and discard.
+- **Middleware rules tightened to match Spec 2.** Key changes: `role: "user"` on API routes returns `403` JSON (not a redirect, so `fetch()` callers receive a parseable error); `role: "user"` on UI routes redirects to `/` (not `/login`, which implied the user could gain access by logging in again — they can't); `/` always passes through unconditionally.
+- **Seed script renamed and extended.** `seed-admins.ts` → `seed-privileged-users.ts` to better communicate its purpose (provisions any privileged role, not just admins). Display name vars (`SEED_ADMIN_NAME`, `SEED_AUTHOR_NAME`) are now required; the script validates all 6 vars and password length before opening a DB connection — fail-fast prevents partial seeding.
+
+**Alternatives considered**
+
+- **Keep PII in session, skip `/api/auth/me`.** Rejected — PII in encrypted cookies is a security smell regardless of the encryption strength. The `/api/auth/me` endpoint is a one-time DB lookup on navigation render, which is negligible overhead.
+- **Use server-side `redirect()` for logout instead of a form POST.** Rejected — a Server Action that calls `redirect()` would work, but a plain `<form method="post">` is simpler, requires no client bundle, and expresses intent clearly in HTML semantics.
+- **Raise password minimum only for new features (leave seed at 8 chars).** Rejected — inconsistent minimums in the same codebase create confusion. The seed script provisions accounts that log into the same system; they should meet the same policy.
+- **Return `{ user: { userId, role } }` wrapper in login/register response.** Rejected — Spec 2 defines the flat `{ ok, role }` shape; wrapping adds nesting for no benefit and would break any future client that reads the spec directly.
+- **Client Component NavBanner that fetches `/api/auth/me` on mount.** Considered — would enable real-time name updates without a page reload. Deferred: the Server Component + `cache()` approach avoids a loading flash and is simpler for MVP. Can switch to client-side if the display name becomes editable in-session.
+
+**Consequences**
+
+- All existing consumers of `session.user.id`, `session.user.email`, `session.user.displayName` (ingest layout, ingest route handlers) must be updated in this task — no phased migration. This is a breaking internal change contained entirely within `apps/web`.
+- `GET /api/auth/logout` is removed. Any bookmark, browser history entry, or external link pointing to the GET endpoint will receive a `404`. Acceptable for a development-phase app with no real users.
+- NavBanner now issues a DB read (`User.findById`) on every server render that requires the user's display name. The `cache()` wrapper deduplicates within a request but not across requests. For MVP traffic this is negligible; add a short-lived in-memory cache or Redis layer if it becomes a bottleneck.
+- The seed script `npm run seed:default` alias no longer exists; operators must use `npm run seed:privileged`. Update any local runbooks or onboarding docs.
+- Epic IF-A (inference stream / player identity) must be built on the new `{ userId, role }` session shape. This alignment task is a prerequisite for IF-A; it must land first.
+
+---
+
+## 2026-05-26 — Auth module: user roles, route protection & seed script
+
+**Context**
+The ingestion pipeline (Epic I) is in place but every route is effectively open — the `ingest/layout.tsx` performs a basic role check but there is no login flow, no session-creation endpoint, and no middleware to enforce route access. Regular users, authors, and admins all have distinct access boundaries, and a seed script is required because privileged accounts cannot self-register. Before any inference or player-facing work begins, authenticated identity must be a first-class concern. Spec: [auth-module](specs/2026-05-26SPEC-auth-module.md).
+
+**Decision**
+
+- **`iron-session` for session management.** The session infrastructure (`lib/session.ts`, `SessionUser` type, `sessionOptions`) was already scaffolded in Epic I-A. The auth module builds directly on it with two new Route Handlers (`POST /api/auth/login`, `POST /api/auth/register`). No JWT, no NextAuth — `iron-session` provides signed-and-encrypted `httpOnly` cookies with minimal surface area, matching the security rules.
+- **`argon2` for password hashing.** Per `security.md`, `argon2` is the mandated hashing library (memory-hard, PHC winner, more GPU-resistant than bcrypt). Added to both `apps/web` (route handlers) and `packages/db` (seed script).
+- **No self-registration for `"author"` or `"admin"`.** The `/register` endpoint hard-codes `role: "user"`. Privileged accounts are provisioned exclusively via the seed script using env vars. This eliminates a privilege-escalation surface with zero config overhead.
+- **`profile.displayName` synced on register and seed.** Both the top-level `user.name` and `user.profile.displayName` are written to the same value at account creation time. The session and banner use `user.name` (required, always present); `profile.displayName` is kept in sync so future profile pages do not need a migration.
+- **Next.js Edge middleware for route protection.** A single `middleware.ts` at the `apps/web` root intercepts all relevant routes. `/ingest/*` redirects both unauthenticated visitors and `role: "user"` sessions to `/login`. `/login` and `/register` redirect already-authenticated users to their role's home, preventing double-session states.
+- **`role: "user"` on `/ingest/*` redirects to `/login` (not `/`).** Consistent redirect target for any unauthorized access to the ingest area — simpler mental model than role-conditional redirect targets, and avoids confusion where a regular user might think they should be on `/`.
+- **Seed script in `packages/db/scripts/`** with `tsx` as the runner (already used in `apps/workers`). Idempotent by design: checks email existence before insert and skips with a log line. Exits with non-zero code if any required env var is missing — fail-fast before touching the database.
+- **`packages/db` gets `tsx` as a devDependency.** The package had no devDependencies previously. Adding `tsx` here keeps the seed script self-contained and avoids requiring a workspace-level runner install.
+
+**Alternatives considered**
+
+- **NextAuth / Auth.js.** Rejected — significant abstraction overhead for a solo MVP sprint. `iron-session` + custom Route Handlers gives full control with ~50 lines of code and zero magic. Can be layered on later if OAuth providers are added.
+- **JWT stored in `localStorage`.** Rejected — `security.md` explicitly prohibits storing auth tokens in `localStorage`. `iron-session` `httpOnly` cookies are the mandated approach.
+- **bcrypt for password hashing.** Rejected — `security.md` mandates `argon2`.
+- **Redirect `role: "user"` on `/ingest/*` to `/` rather than `/login`.** Rejected — the user confirmed `/login` is the correct redirect for both unauthenticated and unauthorized-role access to the ingest area. A single redirect target is simpler.
+- **Seed script in root `scripts/` folder.** Rejected — the seed script's only concern is the `@secondseat/db` package (Mongoose connection, User model). Collocating it in `packages/db/scripts/` makes the dependency boundary explicit.
+- **Admin-creates-users UI.** Out of scope for MVP — env-var seed is sufficient for the competition sprint timeline.
+
+**Consequences**
+
+- `argon2` is a native addon (compiles on install). Adds a compile step to CI and requires build tools (`node-gyp`) in the environment. Acceptable trade-off for the security benefit; the Docker-based CI/dev setup already has build tools available.
+- The ingest layout's existing role check (`ingest/layout.tsx`) becomes partially redundant once middleware is in place. It should be kept as a defence-in-depth layer, but the middleware is now the authoritative enforcement point.
+- `/api/auth/login` and `/api/auth/register` are rate-limit candidates — not wired in this task (no rate-limit middleware on `apps/web` Route Handlers yet). Follow-up: add `express-rate-limit` equivalent (or a Next.js middleware rate-limit) to auth endpoints before any public deployment.
+- Seed accounts use names defaulting to `"Admin"` and `"Author"`. If operators need custom display names, they must update the MongoDB document directly after seeding — env vars for names were explicitly out of scope.
+
+---
+
 ## 2026-05-26 — Ingestion pipeline: source intake, job lifecycle, worker pipeline
 
 **Context**

@@ -51,7 +51,7 @@ const mockGetQueue = vi.mocked(getIngestionQueue);
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function makeAuthorSession() {
-  return { user: { id: '507f1f77bcf86cd799439011', email: 'a@b.com', displayName: 'Alice', role: 'author' as const } };
+  return { user: { userId: '507f1f77bcf86cd799439011', role: 'author' as const } };
 }
 
 function makeJsonRequest(body: unknown) {
@@ -86,7 +86,7 @@ describe('POST /api/ingest', () => {
 
   it('returns 403 when user role is "user"', async () => {
     mockGetSession.mockResolvedValue({
-      user: { id: '1', email: 'u@u.com', displayName: 'User', role: 'user' as const },
+      user: { userId: '507f1f77bcf86cd799439099', role: 'user' as const },
     } as never);
     const res = await POST(makeJsonRequest({}));
     expect(res.status).toBe(403);
