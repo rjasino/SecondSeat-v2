@@ -5,7 +5,8 @@ description: Begin implementation after spec is approved and logs are written
 
 Logs have been confirmed. Implement the approved spec in this order:
 
-1. **Create the working branch first.** Cut a fresh branch from `main` for the current task before making implementation changes. Name it `<author_name>/<task_word>`.
+1. **Update `main`, then create the working branch.** Pull the latest remote `main` branch first, then cut a fresh branch from that updated `main` for the current task before making implementation changes. Name it `<author_name>/<task_word>`.
+   - Refresh local `main` from the remote before branching so the task starts from the current upstream tip
    - Read `author_name` from `git config user.name`
    - Normalize it for branch names (lowercase; replace spaces and other unsafe characters with `-`)
    - Derive `task_word` from the approved task/spec as one concise lowercase word
