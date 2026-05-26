@@ -4,6 +4,43 @@ Architecture and product decisions for SecondSeat, in reverse chronological orde
 
 ---
 
+## 2026-05-26 — Ingestion pipeline: source intake, job lifecycle, worker pipeline
+
+**Context**
+The monorepo scaffold is in place but no content can enter the system. The RAG retrieval layer — and therefore the entire inference path — requires a vector knowledge base built from ingested guide documents. The ingestion pipeline is the critical path blocker for every downstream epic (inference stream, hint generation). Three coordinated epics are needed: a Next.js intake UI and API for accepting guide content (Epic I-A), a job tracking layer that persists BullMQ state durably in MongoDB (Epic I-B), and a BullMQ worker that chunks, embeds, and upserts content into ChromaDB (Epic I-C). Specs: [I-A](specs/2026-05-26SPEC-ingestion-source-intake.md), [I-B](specs/2026-05-26SPEC-ingestion-job-lifecycle.md), [I-C](specs/2026-05-26SPEC-ingestion-worker-pipeline.md).
+
+**Decision**
+
+- **Markdown as the single storage format.** All content stored in `rag_sources.content` is clean Markdown regardless of input format. `.html` files and TipTap HTML output are converted server-side via `turndown` before MongoDB write. The worker therefore always receives Markdown and can use `MarkdownNodeParser` unconditionally — no branching on `sourceType`.
+- **TipTap with `@tiptap/extension-markdown` for both intake and Edit & Retry.** TipTap serialises editor state to Markdown (not HTML) on submit, and loads stored Markdown back into the editor for editing. This means the Edit & Retry form is identical for file-upload sources and text-mode sources — no distinction in the UI.
+- **256-token chunk ceiling to match `all-MiniLM-L6-v2`.** MiniLM silently truncates inputs beyond its 256-token context window. The chunker is configured to 256-token max (down from a naïve 512 default) with 32-token overlap. `MarkdownNodeParser` runs first to preserve section structure; `SentenceSplitter` is applied only to nodes that exceed the ceiling.
+- **Dual state persistence: BullMQ/Redis + MongoDB.** `rag_ingestion_jobs` in MongoDB provides durable job history independent of Redis TTL. The status page reads from MongoDB only — Redis expiry never breaks the UI.
+- **`@secondseat/embedding` singleton.** The package loads `Xenova/all-MiniLM-L6-v2` once via a module-level promise and reuses it. Both `apps/workers` (ingestion) and `apps/inference` (query time) import the same package, guaranteeing vector-space parity.
+- **Auth: creator-scoped job visibility.** Only the author who created a source (or an admin) can view or retry that job. Regular users are redirected to `/` from all `/ingest` routes.
+- **`CHROMA_COLLECTION_NAME` is configurable.** Defaults to `secondseat_guide_chunks` but can be overridden per environment to isolate dev/staging data on a shared ChromaDB instance.
+
+**Alternatives considered**
+
+- **Store raw HTML in MongoDB, convert at chunk time.** Rejected — the worker would need to branch on `sourceType` and carry an HTML-stripping dependency. Centralising conversion at intake simplifies the worker and guarantees the stored content is always human-readable Markdown.
+- **Use DOMPurify for HTML sanitisation (client-side).** Rejected — DOMPurify is browser-only; server-side conversion via `turndown` achieves both sanitisation and format normalisation in one step.
+- **Single TipTap mode (no file upload).** Rejected — authors need to ingest existing guide files (MD/HTML from GameFAQs, wikis, etc.) without manual copy-paste.
+- **SSE/WebSocket for real-time job progress.** Rejected for MVP — polling every 3 s is sufficient for a 30–120 s ingestion job and avoids the complexity of persistent connections in the Next.js App Router layer.
+- **Redis-only job state (no MongoDB mirror).** Rejected — Redis TTL would eventually expire job records, breaking the status page and audit trail for long-running jobs.
+- **512-token chunk size.** Rejected — MiniLM's 256-token hard limit means inputs beyond that are silently truncated, producing worse embeddings without any error signal. The chunker must respect the model's actual capacity.
+- **`@huggingface/transformers` (the renamed fork).** Rejected — SDD specifies `@xenova/transformers` and the fork's API surface is still stabilising. Stay on the SDD-specified package for now; migration is a one-line change when the time comes.
+- **Parallel chunk processing within a job.** Rejected for MVP — sequential processing is simpler to reason about for progress tracking and error recovery. Parallelism can be added if ingestion latency becomes a bottleneck.
+
+**Consequences**
+
+- `turndown` is a new runtime dependency in `apps/web`. It is a stable, widely-used library but adds ~20 KB to the server bundle.
+- `@tiptap/extension-markdown` Markdown round-trip is not lossless for all Markdown constructs (e.g. nested lists, raw HTML blocks). Content with complex formatting may be subtly altered on Edit & Retry. Acceptable for MVP guide content.
+- The 256-token chunk ceiling produces more chunks per document than a 512-token window. This increases ChromaDB write volume and embedding computation time but improves retrieval quality by keeping chunks within the model's lossless range.
+- Orphaned `rag_documents` rows from a retry that produces fewer chunks than the original are not cleaned up in MVP. This is flagged in I-C's Out of Scope and can be addressed with a cleanup job later.
+- Workers must connect to MongoDB on startup (via `@secondseat/db`). This couples the worker process to Mongo availability — acceptable since both run under the same `docker-compose.yml` in development and the same platform in production.
+- The `@secondseat/embedding` singleton pattern means the model is loaded in-process in both `apps/workers` and `apps/inference`. Each process carries the model weights in memory (~90 MB for MiniLM). This is acceptable for the MVP scale; a shared embedding microservice could be introduced if memory pressure becomes an issue.
+
+---
+
 ## 2026-05-26 — Monorepo scaffold with liveness-only health checks
 
 **Context**
