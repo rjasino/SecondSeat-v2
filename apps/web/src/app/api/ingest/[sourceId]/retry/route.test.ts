@@ -77,12 +77,12 @@ function makeRequest(body: unknown) {
   });
 }
 
-function makeAuthorSession(id = VALID_USER_ID) {
-  return { user: { id, email: 'a@b.com', displayName: 'Alice', role: 'author' as const } };
+function makeAuthorSession(userId = VALID_USER_ID) {
+  return { user: { userId, role: 'author' as const } };
 }
 
 function makeAdminSession() {
-  return { user: { id: VALID_USER_ID, email: 'a@b.com', displayName: 'Admin', role: 'admin' as const } };
+  return { user: { userId: VALID_USER_ID, role: 'admin' as const } };
 }
 
 function makeFailedSource(createdBy = VALID_USER_ID) {
@@ -151,7 +151,7 @@ describe('PATCH /api/ingest/:sourceId/retry', () => {
   });
 
   it('returns 403 when user does not own the source', async () => {
-    mockGetSession.mockResolvedValue(makeAuthorSession('different-user-0000000') as never);
+    mockGetSession.mockResolvedValue(makeAuthorSession('aaaaaaaaaaaaaaaaaaaaaaaa') as never);
     mockRagSource.findById.mockResolvedValue(makeFailedSource(VALID_USER_ID) as never);
     const res = await PATCH(makeRequest(validBody()), makeParams());
     expect(res.status).toBe(403);
@@ -207,7 +207,7 @@ describe('PATCH /api/ingest/:sourceId/retry', () => {
 
   it('allows admin to retry a source they do not own', async () => {
     mockGetSession.mockResolvedValue(makeAdminSession() as never);
-    mockRagSource.findById.mockResolvedValue(makeFailedSource('another-user-000000') as never);
+    mockRagSource.findById.mockResolvedValue(makeFailedSource('bbbbbbbbbbbbbbbbbbbbbbbb') as never);
     const res = await PATCH(makeRequest(validBody()), makeParams());
     expect(res.status).toBe(201);
   });

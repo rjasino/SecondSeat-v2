@@ -66,7 +66,7 @@ beforeEach(() => {
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 describe('POST /api/auth/login', () => {
-  it('returns 200 and SessionUser on valid credentials', async () => {
+  it('returns 200 { ok, role } on valid credentials', async () => {
     const doc = makeUserDoc();
     mockFindOne.mockResolvedValue(doc as never);
     mockVerify.mockResolvedValue(true);
@@ -75,15 +75,10 @@ describe('POST /api/auth/login', () => {
     const body = await res.json();
 
     expect(res.status).toBe(200);
-    expect(body).toMatchObject({
-      id: '507f1f77bcf86cd799439011',
-      email: 'player@example.com',
-      displayName: 'Player One',
-      role: 'user',
-    });
+    expect(body).toEqual({ ok: true, role: 'user' });
   });
 
-  it('writes the session on success', async () => {
+  it('writes slim session { userId, role } on success', async () => {
     const session = makeSession();
     mockGetSession.mockResolvedValue(session as never);
     mockFindOne.mockResolvedValue(makeUserDoc() as never);
@@ -92,32 +87,37 @@ describe('POST /api/auth/login', () => {
     await POST(makeRequest({ email: 'player@example.com', password: 'secret123' }));
 
     expect(session.save).toHaveBeenCalledOnce();
-    expect(session.user).toMatchObject({ role: 'user', email: 'player@example.com' });
+    expect(session.user).toEqual({ userId: '507f1f77bcf86cd799439011', role: 'user' });
   });
 
-  it('returns 401 when user is not found', async () => {
+  it('returns 401 { error: "invalid_credentials" } when user is not found', async () => {
     mockFindOne.mockResolvedValue(null);
 
     const res = await POST(makeRequest({ email: 'nobody@example.com', password: 'secret123' }));
     const body = await res.json();
 
     expect(res.status).toBe(401);
-    expect(body.error).toBe('Invalid email or password');
+    expect(body).toEqual({ error: 'invalid_credentials' });
   });
 
-  it('returns 401 when password does not match', async () => {
+  it('returns 401 { error: "invalid_credentials" } when password does not match', async () => {
     mockFindOne.mockResolvedValue(makeUserDoc() as never);
     mockVerify.mockResolvedValue(false);
 
     const res = await POST(makeRequest({ email: 'player@example.com', password: 'wrong' }));
+    const body = await res.json();
 
     expect(res.status).toBe(401);
+    expect(body).toEqual({ error: 'invalid_credentials' });
   });
 
-  it('returns 422 when email is malformed', async () => {
+  it('returns 422 { error: "validation_error" } when email is malformed', async () => {
     const res = await POST(makeRequest({ email: 'not-an-email', password: 'secret123' }));
+    const body = await res.json();
 
     expect(res.status).toBe(422);
+    expect(body.error).toBe('validation_error');
+    expect(Array.isArray(body.issues)).toBe(true);
   });
 
   it('returns 422 when body is missing required fields', async () => {

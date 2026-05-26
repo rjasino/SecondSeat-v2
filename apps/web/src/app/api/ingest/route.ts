@@ -108,7 +108,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       sourceType: 'file',
       sourceUri: file.name,
       content,
-      createdBy: session.user.id,
+      createdBy: session.user.userId,
       metadata: { game: parsed.data.game, area: parsed.data.area, spoilerLevel: parsed.data.spoilerLevel },
       config,
     });
@@ -142,7 +142,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       sourceType: 'text',
       sourceUri: undefined,
       content,
-      createdBy: session.user.id,
+      createdBy: session.user.userId,
       metadata: { game: parsed.data.game, area: parsed.data.area, spoilerLevel: parsed.data.spoilerLevel },
       config,
     });

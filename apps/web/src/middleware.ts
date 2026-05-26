@@ -23,16 +23,30 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
   const user = await getSessionUser(request);
   const role = user?.role;
 
-  // /ingest/* — author and admin only; everything else → /login
-  if (pathname.startsWith('/ingest')) {
-    if (!user || role === 'user') {
+  // /api/ingest/* — role:user gets 403 JSON; unauthenticated → redirect /login
+  if (pathname.startsWith('/api/ingest')) {
+    if (!user) {
       return NextResponse.redirect(new URL('/login', request.url));
     }
+    if (role === 'user') {
+      return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+    }
     return NextResponse.next();
   }
 
-  // /login — already authenticated users are sent to their home
-  if (pathname === '/login') {
+  // /ingest/* UI routes — role:user → /, unauthenticated → /login
+  if (pathname.startsWith('/ingest')) {
+    if (!user) {
+      return NextResponse.redirect(new URL('/login', request.url));
+    }
+    if (role === 'user') {
+      return NextResponse.redirect(new URL('/', request.url));
+    }
+    return NextResponse.next();
+  }
+
+  // /login and /register — redirect already-authenticated users to their home
+  if (pathname === '/login' || pathname === '/register') {
     if (user) {
       const dest = role === 'user' ? '/' : '/ingest';
       return NextResponse.redirect(new URL(dest, request.url));
@@ -40,26 +54,10 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
     return NextResponse.next();
   }
 
-  // /register — same redirect-if-authenticated logic
-  if (pathname === '/register') {
-    if (user) {
-      const dest = role === 'user' ? '/' : '/ingest';
-      return NextResponse.redirect(new URL(dest, request.url));
-    }
-    return NextResponse.next();
-  }
-
-  // / — author/admin are sent to /ingest; everyone else renders the page
-  if (pathname === '/') {
-    if (user && (role === 'author' || role === 'admin')) {
-      return NextResponse.redirect(new URL('/ingest', request.url));
-    }
-    return NextResponse.next();
-  }
-
+  // / — always public; no auto-redirect for any role
   return NextResponse.next();
 }
 
 export const config = {
-  matcher: ['/', '/login', '/register', '/ingest/:path*'],
+  matcher: ['/', '/login', '/register', '/ingest/:path*', '/api/ingest/:path*'],
 };

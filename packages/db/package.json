@@ -9,7 +9,8 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "seed:privileged": "tsx --env-file=.env scripts/seed-privileged-users.ts"
   },
   "dependencies": {
     "argon2": "^0.44.0",

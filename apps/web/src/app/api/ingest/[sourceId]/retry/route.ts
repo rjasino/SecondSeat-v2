@@ -49,7 +49,7 @@ export async function PATCH(
   }
 
   // Ownership check
-  if (session.user.role !== 'admin' && source.createdBy.toString() !== session.user.id) {
+  if (session.user.role !== 'admin' && source.createdBy.toString() !== session.user.userId) {
     return NextResponse.json({ error: 'Access denied' }, { status: 403 });
   }
 

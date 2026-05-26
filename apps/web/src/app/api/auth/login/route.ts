@@ -11,39 +11,38 @@ export async function POST(request: Request): Promise<NextResponse> {
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json({ errors: [{ field: 'body', message: 'Invalid JSON' }] }, { status: 422 });
+    return NextResponse.json(
+      { error: 'validation_error', issues: [{ path: ['body'], message: 'Invalid JSON' }] },
+      { status: 422 },
+    );
   }
 
   const parsed = loginSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json({ errors: formatZodErrors(parsed.error) }, { status: 422 });
+    return NextResponse.json(
+      { error: 'validation_error', issues: formatZodErrors(parsed.error) },
+      { status: 422 },
+    );
   }
 
   await ensureDb();
 
   const user = await User.findOne({ email: parsed.data.email.toLowerCase() });
   if (!user) {
-    return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 });
+    return NextResponse.json({ error: 'invalid_credentials' }, { status: 401 });
   }
 
   const valid = await argon2.verify(user.passwordHash, parsed.data.password);
   if (!valid) {
-    return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 });
+    return NextResponse.json({ error: 'invalid_credentials' }, { status: 401 });
   }
 
   const session = await getSession();
   session.user = {
-    id: user._id.toString(),
-    email: user.email,
-    displayName: user.name,
+    userId: user._id.toString(),
     role: user.role,
   };
   await session.save();
 
-  return NextResponse.json({
-    id: user._id.toString(),
-    email: user.email,
-    displayName: user.name,
-    role: user.role,
-  });
+  return NextResponse.json({ ok: true, role: user.role });
 }

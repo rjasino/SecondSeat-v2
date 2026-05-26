@@ -46,8 +46,7 @@ function makeRequest(body: unknown) {
 const validBody = {
   name: 'Player One',
   email: 'player@example.com',
-  password: 'secret123',
-  confirmPassword: 'secret123',
+  password: 'secretpassword123',
 };
 
 function makeCreatedDoc() {
@@ -73,17 +72,12 @@ beforeEach(() => {
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 describe('POST /api/auth/register', () => {
-  it('returns 201 and SessionUser on valid registration', async () => {
+  it('returns 201 { ok: true, role: "user" } on valid registration', async () => {
     const res = await POST(makeRequest(validBody));
     const body = await res.json();
 
     expect(res.status).toBe(201);
-    expect(body).toMatchObject({
-      id: '507f1f77bcf86cd799439011',
-      email: 'player@example.com',
-      displayName: 'Player One',
-      role: 'user',
-    });
+    expect(body).toEqual({ ok: true, role: 'user' });
   });
 
   it('creates user with role "user" and synced profile.displayName', async () => {
@@ -98,42 +92,47 @@ describe('POST /api/auth/register', () => {
     );
   });
 
-  it('writes the session on success', async () => {
+  it('writes slim session { userId, role } on success', async () => {
     const session = makeSession();
     mockGetSession.mockResolvedValue(session as never);
 
     await POST(makeRequest(validBody));
 
     expect(session.save).toHaveBeenCalledOnce();
-    expect(session.user).toMatchObject({ role: 'user' });
+    expect(session.user).toEqual({ userId: '507f1f77bcf86cd799439011', role: 'user' });
   });
 
-  it('returns 409 when email is already registered', async () => {
+  it('strips role field from request body — always creates role: "user"', async () => {
+    await POST(makeRequest({ ...validBody, role: 'admin' }));
+
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ role: 'user' }),
+    );
+  });
+
+  it('returns 409 { error: "email_already_registered" } when email is taken', async () => {
     mockFindOne.mockResolvedValue(makeCreatedDoc() as never);
 
     const res = await POST(makeRequest(validBody));
+    const body = await res.json();
 
     expect(res.status).toBe(409);
+    expect(body).toEqual({ error: 'email_already_registered' });
   });
 
-  it('returns 422 when passwords do not match', async () => {
-    const res = await POST(
-      makeRequest({ ...validBody, confirmPassword: 'different' }),
-    );
+  it('returns 422 { error: "validation_error" } when password is shorter than 12 chars', async () => {
+    const res = await POST(makeRequest({ ...validBody, password: 'short' }));
     const body = await res.json();
 
     expect(res.status).toBe(422);
-    expect(body.errors).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ field: 'confirmPassword' }),
-      ]),
-    );
+    expect(body.error).toBe('validation_error');
+    expect(Array.isArray(body.issues)).toBe(true);
   });
 
-  it('returns 422 when password is too short', async () => {
-    const res = await POST(makeRequest({ ...validBody, password: 'short', confirmPassword: 'short' }));
+  it('does not require confirmPassword field', async () => {
+    const res = await POST(makeRequest(validBody));
 
-    expect(res.status).toBe(422);
+    expect(res.status).toBe(201);
   });
 
   it('returns 422 when email is malformed', async () => {

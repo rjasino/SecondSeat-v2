@@ -11,19 +11,25 @@ export async function POST(request: Request): Promise<NextResponse> {
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json({ errors: [{ field: 'body', message: 'Invalid JSON' }] }, { status: 422 });
+    return NextResponse.json(
+      { error: 'validation_error', issues: [{ path: ['body'], message: 'Invalid JSON' }] },
+      { status: 422 },
+    );
   }
 
   const parsed = registerSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json({ errors: formatZodErrors(parsed.error) }, { status: 422 });
+    return NextResponse.json(
+      { error: 'validation_error', issues: formatZodErrors(parsed.error) },
+      { status: 422 },
+    );
   }
 
   await ensureDb();
 
   const existing = await User.findOne({ email: parsed.data.email.toLowerCase() });
   if (existing) {
-    return NextResponse.json({ error: 'Email already registered' }, { status: 409 });
+    return NextResponse.json({ error: 'email_already_registered' }, { status: 409 });
   }
 
   const passwordHash = await argon2.hash(parsed.data.password);
@@ -40,20 +46,10 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   const session = await getSession();
   session.user = {
-    id: user._id.toString(),
-    email: user.email,
-    displayName: user.name,
-    role: user.role,
+    userId: user._id.toString(),
+    role: 'user',
   };
   await session.save();
 
-  return NextResponse.json(
-    {
-      id: user._id.toString(),
-      email: user.email,
-      displayName: user.name,
-      role: user.role,
-    },
-    { status: 201 },
-  );
+  return NextResponse.json({ ok: true, role: 'user' }, { status: 201 });
 }

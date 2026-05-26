@@ -4,10 +4,8 @@ import { cookies } from 'next/headers';
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface SessionUser {
-  id: string;
-  email: string;
-  displayName: string;
-  role: 'user' | 'admin' | 'author';
+  userId: string;
+  role: 'user' | 'author' | 'admin';
 }
 
 export interface AppSession {

@@ -6,6 +6,77 @@ All notable changes to SecondSeat are documented here. Format loosely follows [K
 
 ## Unreleased
 
+### Changed — Auth Module Alignment to Spec 2 Contract (spec: [auth-alignment](specs/2026-05-26SPEC-auth-alignment.md))
+
+Reconciles the existing auth implementation with the approved Spec 2 contract. No new Mongoose fields; the only type change is `SessionUser` in `apps/web/src/lib/session.ts`.
+
+#### Modified files (`apps/web`)
+
+- `apps/web/src/lib/session.ts` — `SessionUser` type slimmed to `{ userId: string; role: "user" | "author" | "admin" }`. Fields `id`, `email`, and `displayName` removed. Session consumers updated.
+- `apps/web/src/schemas/auth.ts` — `RegisterSchema`: `confirmPassword` field removed; password minimum raised from 8 → 12 characters; `role` field stripped (Zod `.strip()` default prevents privilege escalation). `LoginSchema`: unchanged shape.
+- `apps/web/src/app/api/auth/register/route.ts` — success response shape changed to `201 { ok: true, role: "user" }`. Session write updated to new `SessionUser` shape (`userId` not `id`, no `email`/`displayName`).
+- `apps/web/src/app/api/auth/login/route.ts` — success response shape changed to `200 { ok: true, role }`. Session write updated to new `SessionUser` shape.
+- `apps/web/src/app/api/auth/logout/route.ts` — handler converted from `GET` to `POST`. Old `GET` route removed.
+- `apps/web/src/middleware.ts` — updated access rules:
+  - `role: "user"` on `/api/ingest/**` → `403 { error: "forbidden" }` JSON (was redirect)
+  - `role: "user"` on `/ingest/**` UI route → redirect `/` (was `/login`)
+  - Authenticated users on `/login` or `/register` → `user` → `/`, `author`/`admin` → `/ingest`
+  - `/` always passes through; no auto-redirect for any role
+- `apps/web/src/components/layout/nav-banner.tsx` — converted to use slim session + `GET /api/auth/me` for display name. Role badges added: `Player` (user), `Author`, `Admin`. Login + Register links shown when unauthenticated; Ingestion link shown for `author`/`admin` only. Logout button converted from `<a href="/api/auth/logout">` to `POST /api/auth/logout` via `<form method="post">` or `fetch`.
+- `apps/web/src/app/ingest/layout.tsx` — session field references updated from `session.user.id` / `session.user.email` / `session.user.displayName` to `session.user.userId`.
+- `apps/web/src/app/api/ingest/route.ts` — session field updated (`id` → `userId`).
+- `apps/web/src/app/api/ingest/status/[jobId]/route.ts` — session field updated (`id` → `userId`).
+- `apps/web/src/app/api/ingest/[sourceId]/retry/route.ts` — session field updated (`id` → `userId`).
+
+#### New file (`apps/web`)
+
+- `apps/web/src/app/api/auth/me/route.ts` — `GET /api/auth/me`; reads `session.user.userId`; calls `User.findById()`; returns `{ userId, name, email, role }`. Returns `401 { error: "unauthenticated" }` if no session or user document not found (also destroys session in latter case).
+- `apps/web/src/lib/user.ts` — `getUserById(userId: string)` helper wrapped with Next.js `cache()` to deduplicate `User.findById` calls within a single render tree.
+
+#### Modified files (`packages/db`)
+
+- `packages/db/scripts/seed-privileged-users.ts` — renamed from `seed-admins.ts`. New env vars: `SEED_ADMIN_NAME`, `SEED_AUTHOR_NAME`. Startup validation now checks all 6 required vars and exits early if any are missing. Password length checked (min 12) before DB connection. Idempotent: logs `"already exists — skipping"` on duplicate email.
+- `packages/db/package.json` — `seed:default` alias renamed to `seed:privileged`; script path updated to `seed-privileged-users.ts`.
+
+#### Root `package.json`
+
+- `seed:privileged` alias added (delegates to `packages/db` script).
+
+#### Endpoints changed
+
+| Method | Endpoint             | Auth     | Change                                               |
+| ------ | -------------------- | -------- | ---------------------------------------------------- |
+| POST   | `/api/auth/register` | No       | Response body → `{ ok: true, role: "user" }` (was full `SessionUser`) |
+| POST   | `/api/auth/login`    | No       | Response body → `{ ok: true, role }` (was full `SessionUser`)         |
+| POST   | `/api/auth/logout`   | Any role | **Changed from GET to POST**                         |
+| GET    | `/api/auth/me`       | Any role | **New** — returns `{ userId, name, email, role }`    |
+
+#### Session type change
+
+| Field         | Before                          | After                           |
+| ------------- | ------------------------------- | ------------------------------- |
+| `id`          | `string`                        | — removed; replaced by `userId` |
+| `userId`      | — absent                        | `string`                        |
+| `role`        | `"user" \| "author" \| "admin"` | unchanged                       |
+| `email`       | `string`                        | — removed                       |
+| `displayName` | `string`                        | — removed                       |
+
+#### Seed env vars added
+
+| Var                | Required | Notes          |
+| ------------------ | -------- | -------------- |
+| `SEED_ADMIN_NAME`  | Yes      | New — admin display name  |
+| `SEED_AUTHOR_NAME` | Yes      | New — author display name |
+
+#### Tests updated
+
+- `apps/web/src/app/api/auth/login/route.test.ts` — updated response shape assertions
+- `apps/web/src/app/api/auth/register/route.test.ts` — updated response shape assertions; removed `confirmPassword` from test bodies; added 12-char password min test
+- `apps/web/src/app/api/auth/me/route.test.ts` — **new**: `200` happy path, `401` no session, `401` deleted user (session destroyed)
+- `apps/web/src/app/api/auth/logout/route.test.ts` — updated from GET to POST assertions
+
+---
+
 ### Added — Auth Module: User Roles, Route Protection & Seed Script (spec: [auth-module](specs/2026-05-26SPEC-auth-module.md))
 
 #### New pages (`apps/web`)
