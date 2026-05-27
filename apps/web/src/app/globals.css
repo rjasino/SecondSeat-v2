@@ -1,16 +1,117 @@
-@import "tailwindcss";
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  color-scheme: dark;
+  --bg: #0a0a0a;
+  --bg-surface: #111;
+  --bg-hover: #1a1a1a;
+  --border: #2a2a2a;
+  --text: #e5e5e5;
+  --text-muted: #888;
+  --accent: #3b82f6;
+  --accent-hover: #2563eb;
+  --danger: #ef4444;
+  --danger-hover: #dc2626;
+  --success: #22c55e;
+  --warning: #f59e0b;
 }
 
-/* Amber "deleting" status badge — distinct from green/blue/red status badges */
-.badge--deleting {
-  color: #d97706;
-  background-color: rgba(217, 119, 6, 0.15);
-}
-
-html,
 body {
-  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
 }
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+input, select, textarea {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 14px;
+  padding: 8px 12px;
+  width: 100%;
+  outline: none;
+}
+input:focus, select:focus, textarea:focus {
+  border-color: var(--accent);
+}
+input[type="file"] {
+  padding: 6px;
+  cursor: pointer;
+}
+
+button {
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  padding: 8px 16px;
+  transition: background 0.15s;
+}
+button.primary { background: var(--accent); color: #fff; }
+button.primary:hover { background: var(--accent-hover); }
+button.primary:disabled { background: #1e3a5f; color: #666; cursor: not-allowed; }
+button.danger { background: var(--danger); color: #fff; }
+button.danger:hover { background: var(--danger-hover); }
+button.ghost {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+button.ghost:hover { background: var(--bg-hover); }
+
+.card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1.5rem;
+}
+
+.badge {
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  text-transform: uppercase;
+}
+.badge.queued    { background: #1e3a5f; color: #60a5fa; }
+.badge.processing { background: #1c3a2e; color: #4ade80; }
+.badge.completed  { background: #14532d; color: #86efac; }
+.badge.failed     { background: #450a0a; color: #fca5a5; }
+.badge.idle            { background: #1f1f1f; color: var(--text-muted); }
+.badge.pending_review  { background: #2d2a1a; color: #facc15; }
+.badge.draft           { background: #1a1a2e; color: #818cf8; }
+.badge.deleting        { background: #2d1f0a; color: #d97706; }
+
+/* Role badges (used in NavBar) */
+.badge--role-user   { background: #1a1a1a; color: var(--text-muted); }
+.badge--role-author { background: #1e1b3a; color: #a78bfa; }
+.badge--role-admin  { background: #2d1a0a; color: #fb923c; }
+
+.progress-bar {
+  background: var(--border);
+  border-radius: 4px;
+  height: 6px;
+  overflow: hidden;
+  width: 100%;
+}
+.progress-bar-fill {
+  background: var(--accent);
+  border-radius: 4px;
+  height: 100%;
+  transition: width 0.3s;
+}
+
+table { border-collapse: collapse; width: 100%; }
+th, td { border-bottom: 1px solid var(--border); padding: 10px 12px; text-align: left; }
+th { color: var(--text-muted); font-size: 12px; font-weight: 600; text-transform: uppercase; }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: var(--bg-hover); }
+
+.error-msg { color: #fca5a5; font-size: 13px; margin-top: 4px; }
+.success-msg { color: #86efac; font-size: 13px; margin-top: 4px; }

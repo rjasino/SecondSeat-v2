@@ -1,37 +1,50 @@
-import { pipeline, type FeatureExtractionPipeline } from '@xenova/transformers';
+// @xenova/transformers is ESM-only; dynamic import avoids top-level await issues.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Pipeline = (text: string, opts: Record<string, unknown>) => Promise<any>;
 
+export const EMBEDDING_MODEL = "Xenova/all-MiniLM-L6-v2";
 export const EMBEDDING_DIMENSIONS = 384;
-const MODEL_ID = 'Xenova/all-MiniLM-L6-v2';
 
-// ─── Singleton ────────────────────────────────────────────────────────────────
+let _pipeline: Pipeline | null = null;
 
-let _modelPromise: Promise<FeatureExtractionPipeline> | null = null;
+async function getPipeline(): Promise<Pipeline> {
+  if (_pipeline) return _pipeline;
 
-function getModel(): Promise<FeatureExtractionPipeline> {
-  if (!_modelPromise) {
-    console.log(`[embedding] Loading model ${MODEL_ID}…`);
-    _modelPromise = pipeline('feature-extraction', MODEL_ID) as Promise<FeatureExtractionPipeline>;
-    _modelPromise.catch(() => {
-      // reset so the next call retries after a load failure
-      _modelPromise = null;
-    });
+  const { pipeline, env } = await import("@xenova/transformers");
+
+  env.allowLocalModels = true;
+
+  _pipeline = (await pipeline(
+    "feature-extraction",
+    EMBEDDING_MODEL
+  )) as Pipeline;
+
+  // Dimension assertion — hard guard against accidental model swap
+  const testOutput = await _pipeline("dimension check", {
+    pooling: "mean",
+    normalize: true,
+  });
+  const dims = (testOutput.data as Float32Array).length;
+  if (dims !== EMBEDDING_DIMENSIONS) {
+    throw new Error(
+      `Embedding model returned ${dims} dimensions, expected ${EMBEDDING_DIMENSIONS}`
+    );
   }
-  return _modelPromise;
+
+  console.log(`[embedding] model loaded: ${EMBEDDING_MODEL} (${dims}-dim)`);
+
+  return _pipeline;
 }
 
-// ─── Public API ───────────────────────────────────────────────────────────────
-
-/**
- * Embed a text string using all-MiniLM-L6-v2.
- *
- * The model is loaded once (singleton) and reused across all calls. Concurrent
- * callers before the first load completes all await the same promise.
- *
- * @returns 384-dimensional float array (mean-pooled, normalised)
- */
-export async function embed(text: string): Promise<number[]> {
-  const extractor = await getModel();
-  const output = await extractor(text, { pooling: 'mean', normalize: true });
-  // output.data is a Float32Array; convert to a plain number[]
+export async function embedText(text: string): Promise<number[]> {
+  const embed = await getPipeline();
+  const start = Date.now();
+  const output = await embed(text, { pooling: "mean", normalize: true });
+  const ms = Date.now() - start;
+  console.log(`[embedding] embedded in ${ms}ms`);
   return Array.from(output.data as Float32Array);
+}
+
+export async function warmupEmbeddingModel(): Promise<void> {
+  await getPipeline();
 }

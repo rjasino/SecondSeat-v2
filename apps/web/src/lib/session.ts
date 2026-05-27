@@ -1,36 +1,23 @@
-import { getIronSession, type SessionOptions } from 'iron-session';
-import { cookies } from 'next/headers';
+import type { SessionOptions } from "iron-session";
+import { getIronSession } from "iron-session";
+import { cookies } from "next/headers";
+import { config } from "./config";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-export interface SessionUser {
+export interface SessionData {
   userId: string;
-  role: 'user' | 'author' | 'admin';
+  role: "user" | "author" | "admin";
 }
-
-export interface AppSession {
-  user?: SessionUser;
-}
-
-// ─── Options ──────────────────────────────────────────────────────────────────
 
 export const sessionOptions: SessionOptions = {
-  password: process.env['SESSION_SECRET'] ?? '',
-  cookieName: 'ss_session',
+  password: config.SESSION_PASSWORD,
+  cookieName: "secondseat-session",
   cookieOptions: {
     httpOnly: true,
-    secure: process.env['NODE_ENV'] === 'production',
-    sameSite: 'strict',
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "strict",
   },
 };
 
-// ─── Helper ───────────────────────────────────────────────────────────────────
-
-/**
- * Retrieve the current iron-session from the incoming request cookies.
- * Works in Server Components and Route Handlers (Next.js 15 async cookies()).
- */
 export async function getSession() {
-  const cookieStore = await cookies();
-  return getIronSession<AppSession>(cookieStore, sessionOptions);
+  return getIronSession<SessionData>(await cookies(), sessionOptions);
 }

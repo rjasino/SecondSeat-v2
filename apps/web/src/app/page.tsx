@@ -1,39 +1,25 @@
-import { getSession } from '@/lib/session';
+import NavBar from "@/components/NavBar";
 
-export default async function HomePage() {
-  const session = await getSession();
-  const user = session.user;
-
-  if (user) {
-    return (
-      <main className="flex min-h-screen items-center justify-center p-8">
-        <div className="rounded-2xl border border-neutral-800 bg-neutral-900 px-8 py-6 text-center">
-          <h1 className="text-2xl font-semibold tracking-tight">Welcome, {user.displayName}</h1>
-          <p className="mt-2 text-sm text-neutral-400">The hint companion is on its way.</p>
-          <p className="mt-1 text-xs text-neutral-600">Inference UI coming soon.</p>
-        </div>
-      </main>
-    );
-  }
-
+export default function HomePage() {
   return (
-    <main className="flex min-h-screen items-center justify-center p-8">
-      <div className="rounded-2xl border border-neutral-800 bg-neutral-900 px-8 py-6 text-center">
-        <h1 className="text-2xl font-semibold tracking-tight">SecondSeat</h1>
-        <p className="mt-2 text-sm text-neutral-400">Your spoiler-safe gaming companion.</p>
-        <a
-          href="/login"
-          className="mt-4 inline-block rounded bg-neutral-700 px-4 py-2 text-sm text-neutral-100 transition hover:bg-neutral-600"
-        >
-          Sign in
-        </a>
-        <p className="mt-3 text-xs text-neutral-600">
-          New player?{' '}
-          <a href="/register" className="text-neutral-400 underline hover:text-neutral-200">
-            Create an account
-          </a>
+    <>
+      <NavBar />
+      <main
+        style={{
+          maxWidth: "640px",
+          margin: "0 auto",
+          padding: "4rem 2rem",
+          textAlign: "center",
+        }}
+      >
+        <h1 style={{ fontSize: "28px", fontWeight: 700, marginBottom: "1rem" }}>
+          SecondSeat
+        </h1>
+        <p style={{ color: "var(--text-muted)", lineHeight: "1.8" }}>
+          Your second-screen AI companion for gaming. Get 1–3 line, spoiler-safe
+          micro-hints without breaking your flow.
         </p>
-      </div>
-    </main>
+      </main>
+    </>
   );
 }

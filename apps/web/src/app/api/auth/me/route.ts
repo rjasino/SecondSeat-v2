@@ -1,24 +1,30 @@
-import { NextResponse } from 'next/server';
-import { getSession } from '@/lib/session';
-import { getUserById } from '@/lib/user';
+import { NextResponse } from "next/server";
+import { connectDB } from "@/lib/db";
+import { UserModel } from "@/models/user.model";
+import { getSession } from "@/lib/session";
+
+export const runtime = "nodejs";
 
 export async function GET(): Promise<NextResponse> {
   const session = await getSession();
-  if (!session.user) {
-    return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
+
+  if (!session.userId) {
+    return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
   }
 
-  const profile = await getUserById(session.user.userId);
-  if (!profile) {
-    // User document deleted after session was issued — invalidate the stale session.
-    session.destroy();
-    return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
+  await connectDB();
+  const user = await UserModel.findById(session.userId)
+    .select("name email role")
+    .lean();
+
+  if (!user) {
+    return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
   }
 
   return NextResponse.json({
-    userId: profile.userId,
-    name: profile.name,
-    email: profile.email,
-    role: profile.role,
+    userId: session.userId,
+    name: user.name,
+    email: user.email,
+    role: user.role,
   });
 }

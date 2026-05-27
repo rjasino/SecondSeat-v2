@@ -1,121 +1,152 @@
-import { NextResponse } from 'next/server';
-import mongoose from 'mongoose';
-import { z } from 'zod';
+import { NextResponse } from "next/server";
+import { connectDB } from "@/lib/db";
+import { RagSourceModel } from "@/models/rag-source.model";
+import { RagIngestionJobModel } from "@/models/rag-ingestion-job.model";
+import { getSession } from "@/lib/session";
+import { updateDraftSchema, draftSourceIdParamsSchema } from "@/lib/ingest/schemas";
+import { findDuplicateSource } from "@/lib/ingest/ingest.service";
 
-import { RagSource } from '@secondseat/db';
-import { ensureDb } from '@/lib/db';
-import { getSession } from '@/lib/session';
-import { htmlToMarkdown } from '@/lib/turndown';
+export const runtime = "nodejs";
 
-// ─── Schema ───────────────────────────────────────────────────────────────────
-
-const updateDraftSchema = z.object({
-  title: z.string().min(1).optional(),
-  content: z.string().min(1).optional(),
-  game: z.string().min(1).optional(),
-  area: z.string().min(1).optional(),
-  spoilerLevel: z.enum(['none', 'low', 'medium', 'high']).optional(),
-});
-
-type Params = { params: Promise<{ sourceId: string }> };
-
-// ─── PATCH /api/ingest/drafts/:sourceId ───────────────────────────────────────
-
-export async function PATCH(request: Request, { params }: Params): Promise<NextResponse> {
+export async function PUT(
+  req: Request,
+  { params }: { params: Promise<{ sourceId: string }> }
+): Promise<NextResponse> {
   const session = await getSession();
-  if (!session.user) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  if (!session.userId) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
-  if (!['author', 'admin'].includes(session.user.role)) {
-    return NextResponse.json({ error: 'Insufficient role' }, { status: 403 });
+  if (session.role !== "admin" && session.role !== "author") {
+    return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 
-  const { sourceId } = await params;
-  if (!mongoose.isValidObjectId(sourceId)) {
-    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  const rawParams = await params;
+  const parsedParams = draftSourceIdParamsSchema.safeParse(rawParams);
+  if (!parsedParams.success) {
+    return NextResponse.json({ error: "invalid_params" }, { status: 400 });
   }
+  const { sourceId } = parsedParams.data;
 
   let body: unknown;
   try {
-    body = await request.json();
+    body = await req.json();
   } catch {
-    return NextResponse.json({ error: 'Invalid JSON' }, { status: 422 });
+    return NextResponse.json({ error: "invalid_body" }, { status: 400 });
   }
 
   const parsed = updateDraftSchema.safeParse(body);
   if (!parsed.success) {
-    const errors = parsed.error.issues.map((i) => ({
-      field: String(i.path[0] ?? 'body'),
-      message: i.message,
-    }));
-    return NextResponse.json({ errors }, { status: 422 });
+    return NextResponse.json(
+      { error: "validation_error", details: parsed.error.issues },
+      { status: 422 }
+    );
   }
 
-  await ensureDb();
+  await connectDB();
 
-  const source = await RagSource.findById(sourceId);
+  const source = await RagSourceModel.findById(sourceId);
   if (!source) {
-    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    return NextResponse.json({ error: "not_found" }, { status: 404 });
+  }
+  if (source.status !== "draft") {
+    return NextResponse.json(
+      { error: "conflict", hint: "Only draft sources can be updated via this endpoint." },
+      { status: 409 }
+    );
   }
 
-  if (session.user.role !== 'admin' && source.createdBy.toString() !== session.user.userId) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  const { title, game, guideType, author, content } = parsed.data;
+
+  // Check game+author uniqueness if either is changing
+  const meta = source.metadata as Record<string, unknown> | undefined;
+  const effectiveGame =
+    game ?? (typeof meta?.["game"] === "string" ? meta["game"] : undefined);
+  const effectiveAuthor =
+    author ?? (typeof meta?.["author"] === "string" ? meta["author"] : undefined);
+
+  if (effectiveGame && effectiveAuthor) {
+    const existingSourceId = await findDuplicateSource(
+      effectiveGame,
+      effectiveAuthor,
+      sourceId
+    );
+    if (existingSourceId) {
+      return NextResponse.json(
+        {
+          error: "duplicate_source",
+          hint: "A source for this game and author already exists.",
+          existingSourceId,
+        },
+        { status: 409 }
+      );
+    }
   }
 
-  if (source.status !== 'draft') {
-    return NextResponse.json({ error: 'Source is not a draft' }, { status: 409 });
+  const charCount = content !== undefined ? content.length : (source.content?.length ?? 0);
+  const wordCount = content !== undefined ? countWords(content) : 0;
+
+  const updateFields: Record<string, unknown> = {
+    "metadata.charCount": charCount,
+    "metadata.wordCount": wordCount,
+  };
+  if (title !== undefined) updateFields["title"] = title;
+  if (game !== undefined) updateFields["metadata.game"] = game;
+  if (guideType !== undefined) updateFields["metadata.guideType"] = guideType;
+  if (author !== undefined) updateFields["metadata.author"] = author;
+  if (content !== undefined) updateFields["content"] = content;
+
+  await RagSourceModel.findByIdAndUpdate(sourceId, { $set: updateFields });
+
+  return NextResponse.json({
+    sourceId,
+    savedAt: new Date().toISOString(),
+    charCount,
+    wordCount,
+  });
+}
+
+export async function DELETE(
+  _req: Request,
+  { params }: { params: Promise<{ sourceId: string }> }
+): Promise<NextResponse> {
+  const session = await getSession();
+  if (!session.userId) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+  if (session.role !== "admin" && session.role !== "author") {
+    return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 
-  const { title, content, game, area, spoilerLevel } = parsed.data;
-
-  if (title !== undefined) source.title = title;
-  if (content !== undefined) {
-    source.content = content.startsWith('<') ? htmlToMarkdown(content) : content;
+  const rawParams = await params;
+  const parsedParams = draftSourceIdParamsSchema.safeParse(rawParams);
+  if (!parsedParams.success) {
+    return NextResponse.json({ error: "invalid_params" }, { status: 400 });
   }
-  if (game !== undefined || area !== undefined || spoilerLevel !== undefined) {
-    source.metadata = {
-      game: game ?? source.metadata?.game ?? '',
-      area: area ?? source.metadata?.area ?? '',
-      spoilerLevel: spoilerLevel ?? source.metadata?.spoilerLevel ?? 'low',
-    };
+  const { sourceId } = parsedParams.data;
+
+  await connectDB();
+
+  const source = await RagSourceModel.findById(sourceId);
+  if (!source) {
+    return NextResponse.json({ error: "not_found" }, { status: 404 });
+  }
+  if (source.status !== "draft") {
+    return NextResponse.json(
+      { error: "conflict", hint: "Only draft sources can be deleted via this endpoint." },
+      { status: 409 }
+    );
   }
 
-  await source.save();
+  await RagIngestionJobModel.deleteMany({ sourceId });
+  await RagSourceModel.findByIdAndDelete(sourceId);
+
+  console.log(
+    `[audit] draft deleted adminId=${session.userId} sourceId=${sourceId} ts=${new Date().toISOString()}`
+  );
 
   return new NextResponse(null, { status: 204 });
 }
 
-// ─── DELETE /api/ingest/drafts/:sourceId ──────────────────────────────────────
-
-export async function DELETE(_request: Request, { params }: Params): Promise<NextResponse> {
-  const session = await getSession();
-  if (!session.user) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-  }
-  if (session.user.role !== 'admin') {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
-
-  const { sourceId } = await params;
-  if (!mongoose.isValidObjectId(sourceId)) {
-    return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  }
-
-  await ensureDb();
-
-  const source = await RagSource.findById(sourceId);
-  if (!source) {
-    return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  }
-
-  if (source.status !== 'draft') {
-    return NextResponse.json(
-      { error: 'Source is not a draft — use the source delete endpoint instead' },
-      { status: 409 },
-    );
-  }
-
-  await RagSource.findByIdAndDelete(sourceId);
-
-  return new NextResponse(null, { status: 204 });
+function countWords(text: string): number {
+  return text.trim().split(/\s+/).filter(Boolean).length;
 }

@@ -1,19 +1,29 @@
-import express, { type Express } from 'express';
-import helmet from 'helmet';
-import { baseRateLimiter } from './middleware/rate-limit.js';
-import { errorHandler } from './middleware/error-handler.js';
-import { healthRouter } from './routes/health.js';
+import express, { type Express } from "express";
+import helmet from "helmet";
+import { healthRouter } from "./routes/health.js";
+import { generateRouter } from "./routes/generate.route.js";
+import { authMiddleware } from "./middleware/auth.middleware.js";
+import { errorMiddleware } from "./middleware/error.middleware.js";
 
 export function createApp(): Express {
   const app = express();
 
-  app.use(helmet());
-  app.use(baseRateLimiter);
-  app.use(express.json({ limit: '1mb' }));
+  app.use(
+    helmet({
+      // SSE requires chunked transfer — disable content-length enforcement
+      contentSecurityPolicy: false,
+    })
+  );
+  app.use(express.json({ limit: "1mb" }));
 
-  app.use('/api/v1', healthRouter);
+  // Health check — no auth required
+  app.use("/health", healthRouter);
 
-  app.use(errorHandler);
+  // Inference routes — auth required
+  app.use("/api/v1/generate", authMiddleware, generateRouter);
+
+  // Centralised error handler — must be last
+  app.use(errorMiddleware);
 
   return app;
 }

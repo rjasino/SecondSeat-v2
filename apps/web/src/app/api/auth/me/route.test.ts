@@ -1,84 +1,105 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// ─── Mocks ────────────────────────────────────────────────────────────────────
+vi.mock("@/lib/db", () => ({
+  connectDB: vi.fn().mockResolvedValue(undefined),
+}));
 
-vi.mock('@/lib/session', () => ({
+vi.mock("@/models/user.model", () => ({
+  UserModel: {
+    findById: vi.fn(),
+  },
+}));
+
+vi.mock("@/lib/session", () => ({
   getSession: vi.fn(),
 }));
 
-vi.mock('@/lib/user', () => ({
-  getUserById: vi.fn(),
-}));
+import { GET } from "./route";
+import { UserModel } from "@/models/user.model";
+import { getSession } from "@/lib/session";
 
-// ─── Imports (after mocks) ────────────────────────────────────────────────────
-
-import { GET } from './route';
-import { getSession } from '@/lib/session';
-import { getUserById } from '@/lib/user';
-
-const mockGetSession = vi.mocked(getSession);
-const mockGetUserById = vi.mocked(getUserById);
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function makeSession(user?: { userId: string; role: 'user' | 'author' | 'admin' }) {
-  return { user, destroy: vi.fn() };
-}
-
-function makeProfile() {
-  return {
-    userId: '507f1f77bcf86cd799439011',
-    name: 'Player One',
-    email: 'player@example.com',
-    role: 'user' as const,
-  };
+function mockFindById(userData: Record<string, unknown> | null) {
+  vi.mocked(UserModel.findById).mockReturnValue({
+    select: vi.fn().mockReturnValue({
+      lean: vi.fn().mockResolvedValue(userData),
+    }),
+  } as never);
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockFindById({
+    name: "Test Player",
+    email: "player@example.com",
+    role: "user",
+  });
 });
 
-// ─── Tests ────────────────────────────────────────────────────────────────────
+describe("GET /api/auth/me", () => {
+  it("returns 401 when there is no active session", async () => {
+    vi.mocked(getSession).mockResolvedValue({ userId: undefined } as never);
+    const res = await GET();
+    expect(res.status).toBe(401);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toBe("unauthenticated");
+  });
 
-describe('GET /api/auth/me', () => {
-  it('returns 200 { userId, name, email, role } for a valid session', async () => {
-    mockGetSession.mockResolvedValue(
-      makeSession({ userId: '507f1f77bcf86cd799439011', role: 'user' }) as never,
-    );
-    mockGetUserById.mockResolvedValue(makeProfile());
+  it("returns 200 with user data for a valid user session", async () => {
+    vi.mocked(getSession).mockResolvedValue({
+      userId: "user-123",
+      role: "user",
+    } as never);
 
     const res = await GET();
-    const body = await res.json();
-
     expect(res.status).toBe(200);
-    expect(body).toEqual({
-      userId: '507f1f77bcf86cd799439011',
-      name: 'Player One',
-      email: 'player@example.com',
-      role: 'user',
-    });
+    const body = (await res.json()) as {
+      userId: string;
+      name: string;
+      email: string;
+      role: string;
+    };
+    expect(body.userId).toBe("user-123");
+    expect(body.name).toBe("Test Player");
+    expect(body.email).toBe("player@example.com");
+    expect(body.role).toBe("user");
   });
 
-  it('returns 401 { error: "unauthenticated" } when there is no session', async () => {
-    mockGetSession.mockResolvedValue(makeSession(undefined) as never);
+  it("returns 200 with role=author for an author session", async () => {
+    vi.mocked(getSession).mockResolvedValue({
+      userId: "author-456",
+      role: "author",
+    } as never);
+    mockFindById({ name: "Guide Writer", email: "author@example.com", role: "author" });
 
     const res = await GET();
-    const body = await res.json();
-
-    expect(res.status).toBe(401);
-    expect(body).toEqual({ error: 'unauthenticated' });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { role: string };
+    expect(body.role).toBe("author");
   });
 
-  it('returns 401 and destroys session when user document has been deleted', async () => {
-    const session = makeSession({ userId: '507f1f77bcf86cd799439011', role: 'user' });
-    mockGetSession.mockResolvedValue(session as never);
-    mockGetUserById.mockResolvedValue(null);
+  it("returns 200 with role=admin for an admin session", async () => {
+    vi.mocked(getSession).mockResolvedValue({
+      userId: "admin-789",
+      role: "admin",
+    } as never);
+    mockFindById({ name: "Admin", email: "admin@example.com", role: "admin" });
 
     const res = await GET();
-    const body = await res.json();
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { role: string };
+    expect(body.role).toBe("admin");
+  });
 
+  it("returns 401 when session userId exists but user is not found in the database", async () => {
+    vi.mocked(getSession).mockResolvedValue({
+      userId: "ghost-user",
+      role: "user",
+    } as never);
+    mockFindById(null);
+
+    const res = await GET();
     expect(res.status).toBe(401);
-    expect(body).toEqual({ error: 'unauthenticated' });
-    expect(session.destroy).toHaveBeenCalledOnce();
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toBe("unauthenticated");
   });
 });

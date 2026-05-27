@@ -3,24 +3,28 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "main": "dist/index.js",
   "scripts": {
-    "dev": "tsx watch --env-file=.env src/index.ts",
-    "build": "tsc",
-    "start": "node --env-file=.env dist/index.js",
-    "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "dev": "tsx watch --env-file=.env.local src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node --env-file=.env.local dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
-    "@secondseat/db": "*",
-    "@secondseat/embedding": "*",
+    "mongoose": "^8.8.0",
     "bullmq": "^5.30.1",
-    "chromadb": "^3.4.3",
-    "ioredis": "^5.10.1",
-    "llamaindex": "^0.12.1",
-    "zod": "^3.23.8"
+    "ioredis": "^5.4.1",
+    "@xenova/transformers": "^2.17.2",
+    "chromadb": "^1.9.4",
+    "cheerio": "^1.0.0",
+    "@secondseat/db": "*",
+    "@secondseat/embedding": "*"
   },
   "devDependencies": {
-    "@types/node": "^22.9.0",
-    "tsx": "^4.19.2"
+    "@types/node": "^20.14.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.0",
+    "vitest": "^2.0.0"
   }
 }

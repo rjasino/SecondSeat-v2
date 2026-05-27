@@ -1,7 +1,9 @@
 ---
 name: spec
-description: Generate a spec document from clarified requirements
+description: Generate a spec document from clarified requirements (spec and decision lanes only)
 ---
+
+> **Lane check:** This command applies to **spec lane** and **decision lane** tasks only. Fast-lane tasks skip `/spec` and proceed directly to `/implement`.
 
 Based on the clarified task, create a spec document and save it to `docs/specs/<YYYY-MM-DD>-SPEC-<task-slug>.md`.
 

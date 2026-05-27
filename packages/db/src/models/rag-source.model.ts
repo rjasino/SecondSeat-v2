@@ -1,24 +1,27 @@
-import mongoose, { type Document, type Types, Schema, model } from 'mongoose';
-
-export type SourceType = 'file' | 'url' | 'text';
-export type SourceStatus = 'draft' | 'idle' | 'queued' | 'processing' | 'completed' | 'failed' | 'deleting';
-export type SpoilerLevel = 'none' | 'low' | 'medium' | 'high';
-
-export interface ISourceMetadata {
-  game: string;
-  area: string;
-  spoilerLevel: SpoilerLevel;
-  [key: string]: unknown;
-}
+import mongoose, {
+  type Document,
+  type Model,
+  Schema,
+  type Types,
+} from "mongoose";
 
 export interface IRagSource extends Document {
+  _id: Types.ObjectId;
   title: string;
-  sourceType: SourceType;
+  sourceType: "file" | "url" | "text";
   sourceUri?: string;
-  content: string;
-  createdBy: Types.ObjectId;
-  metadata?: ISourceMetadata;
-  status: SourceStatus;
+  content?: string;
+  createdBy?: Types.ObjectId;
+  metadata?: Record<string, unknown>;
+  status:
+    | "draft"
+    | "idle"
+    | "pending_review"
+    | "queued"
+    | "processing"
+    | "completed"
+    | "failed"
+    | "deleting";
   previousStatus?: string | null;
   startedAt?: Date;
   finishedAt?: Date;
@@ -29,26 +32,49 @@ export interface IRagSource extends Document {
 const ragSourceSchema = new Schema<IRagSource>(
   {
     title: { type: String, required: true },
-    sourceType: { type: String, enum: ['file', 'url', 'text'], required: true },
+    sourceType: {
+      type: String,
+      enum: ["file", "url", "text"],
+      default: "text",
+      required: true,
+    },
     sourceUri: { type: String },
-    content: { type: String, required: true },
-    createdBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+    content: { type: String },
+    createdBy: { type: Schema.Types.ObjectId, ref: "User" },
     metadata: { type: Schema.Types.Mixed },
     status: {
       type: String,
-      enum: ['draft', 'idle', 'queued', 'processing', 'completed', 'failed', 'deleting'],
+      enum: [
+        "draft",
+        "idle",
+        "pending_review",
+        "queued",
+        "processing",
+        "completed",
+        "failed",
+        "deleting",
+      ],
+      default: "idle",
       required: true,
-      default: 'queued',
     },
     previousStatus: { type: String, default: null },
     startedAt: { type: Date },
     finishedAt: { type: Date },
   },
-  { timestamps: true },
+  { timestamps: true }
 );
 
-ragSourceSchema.index({ status: 1, createdBy: 1 });
+ragSourceSchema.index(
+  { "metadata.game": 1, "metadata.author": 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      "metadata.game": { $exists: true, $type: "string" },
+      "metadata.author": { $exists: true, $type: "string" },
+    },
+  }
+);
 
-export const RagSource =
-  (mongoose.models['RagSource'] as mongoose.Model<IRagSource>) ||
-  model<IRagSource>('RagSource', ragSourceSchema);
+export const RagSourceModel: Model<IRagSource> =
+  (mongoose.models["RagSource"] as Model<IRagSource>) ??
+  mongoose.model<IRagSource>("RagSource", ragSourceSchema);

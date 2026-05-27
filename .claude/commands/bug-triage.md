@@ -41,7 +41,7 @@ Write out the minimal fix in plain language (not code yet):
 - What exactly changes and why?
 - Is it a one-liner or does it require touching multiple files?
 - Any edge cases the fix introduces?
-- Should this go through the full `/task → /spec → /log → /implement` workflow, or is it small enough to treat as a one-line patch?
+- Which lane does this belong to? Fast (one-line patch, no schema/API impact), spec (new behaviour, multi-file), or decision (schema change, service contract)?
 
 Then ask: "Does this diagnosis look correct? Should I implement the fix?"
 

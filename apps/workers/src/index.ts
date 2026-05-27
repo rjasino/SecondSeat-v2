@@ -1,63 +1,83 @@
-import { Redis as IORedis } from 'ioredis';
-import { Worker } from 'bullmq';
-import { connect } from '@secondseat/db';
-import { loadConfig } from './config/index.js';
-import { createHealthServer } from './health.js';
-import { processIngestionJob } from './processors/ingestion.processor.js';
-import type { IngestionJobData } from './processors/ingestion.types.js';
-import { processDeleteSourceJob } from './processors/delete-source.processor.js';
-import type { DeleteSourceJobData } from './processors/delete-source.types.js';
+import { Worker } from "bullmq";
+import { Redis as IORedis } from "ioredis";
+import { startHealthServer } from "./health.js";
+import { workerConfig } from "./config/worker.config.js";
+import { connectDB } from "./lib/db.js";
+import { processIngestionJob } from "./processors/ingestion.processor.js";
+import { processDeleteSourceJob } from "./processors/delete-source.processor.js";
+import { warmupEmbeddingModel } from "./services/embed/embedding.service.js";
+import type { IngestionJobData } from "./queues/ingestion-queue.js";
+import type { DeleteSourceJobData } from "./queues/delete-source.queue.js";
 
-const config = loadConfig();
+const port = Number(process.env["WORKERS_HEALTH_PORT"] ?? 4100);
 
-await connect(config.MONGODB_URI);
-console.log('[workers] MongoDB connected');
+async function main(): Promise<void> {
+  await connectDB();
+  console.log("[worker] MongoDB connected");
 
-const connection = new IORedis(config.REDIS_URL, { maxRetriesPerRequest: null });
+  // Pre-load the embedding model so the first job doesn't pay the download cost
+  console.log("[worker] warming up embedding model…");
+  await warmupEmbeddingModel();
 
-const ingestionWorker = new Worker<IngestionJobData>(
-  'ingestion',
-  (job) =>
-    processIngestionJob(job, {
-      chromaUrl: config.CHROMA_URL,
-      collectionName: config.CHROMA_COLLECTION_NAME,
-    }),
-  {
-    connection,
-    concurrency: 1,
-  },
-);
+  const connection = new IORedis(workerConfig.REDIS_URL, {
+    maxRetriesPerRequest: null,
+  });
 
-ingestionWorker.on('completed', (job) => {
-  console.log(`[workers] ingestion job ${job.id} completed`);
-});
+  const worker = new Worker<IngestionJobData>(
+    workerConfig.INGEST_QUEUE_NAME,
+    async (job) => {
+      console.log(
+        `[worker] processing job ${job.id} sourceId=${job.data.sourceId}`
+      );
+      await processIngestionJob(job);
+    },
+    { connection, concurrency: 1 }
+  );
 
-ingestionWorker.on('failed', (job, err) => {
-  console.error(`[workers] ingestion job ${job?.id} failed:`, err.message);
-});
+  worker.on("completed", (job) => {
+    console.log(`[worker] job ${job.id} completed`);
+  });
 
-const deleteSourceWorker = new Worker<DeleteSourceJobData>(
-  'delete-source',
-  (job) =>
-    processDeleteSourceJob(job, {
-      chromaUrl: config.CHROMA_URL,
-      collectionName: config.CHROMA_COLLECTION_NAME,
-    }),
-  {
-    connection,
-    concurrency: 1,
-  },
-);
+  worker.on("failed", (job, err) => {
+    console.error(`[worker] job ${job?.id} failed: ${err.message}`);
+  });
 
-deleteSourceWorker.on('completed', (job) => {
-  console.log(`[workers] delete-source job ${job.id} completed`);
-});
+  // BullMQ failure listener — captures errors even when the processor crashes
+  // mid-update (covers US.I-C.3 "human-readable summary" requirement)
+  worker.on("error", (err) => {
+    console.error("[worker] BullMQ error:", err.message);
+  });
 
-deleteSourceWorker.on('failed', (job, err) => {
-  console.error(`[workers] delete-source job ${job?.id} failed:`, err.message);
-});
+  const deleteWorker = new Worker<DeleteSourceJobData>(
+    workerConfig.DELETE_QUEUE_NAME,
+    async (job) => {
+      console.log(
+        `[delete-worker] processing job ${job.id} sourceId=${job.data.sourceId}`
+      );
+      await processDeleteSourceJob(job);
+    },
+    { connection, concurrency: 2 }
+  );
 
-const server = createHealthServer();
-server.listen(config.WORKER_HEALTH_PORT, () => {
-  console.log(`[workers] health probe on :${config.WORKER_HEALTH_PORT}`);
+  deleteWorker.on("completed", (job) => {
+    console.log(`[delete-worker] job ${job.id} completed`);
+  });
+
+  deleteWorker.on("failed", (job, err) => {
+    console.error(`[delete-worker] job ${job?.id} failed: ${err.message}`);
+  });
+
+  deleteWorker.on("error", (err) => {
+    console.error("[delete-worker] BullMQ error:", err.message);
+  });
+
+  startHealthServer(port);
+  console.log(
+    `[worker] listening on queue="${workerConfig.INGEST_QUEUE_NAME}" health=:${port}`
+  );
+}
+
+main().catch((err: Error) => {
+  console.error("[worker] startup failed:", err.message);
+  process.exit(1);
 });

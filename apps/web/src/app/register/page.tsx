@@ -1,119 +1,143 @@
-'use client';
+"use client";
 
-import { useState, type FormEvent } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, type FormEvent } from "react";
+import { useRouter } from "next/navigation";
 
 export default function RegisterPage() {
   const router = useRouter();
-  const [errors, setErrors] = useState<Record<string, string>>({});
-  const [globalError, setGlobalError] = useState('');
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    setErrors({});
-    setGlobalError('');
+    setError(null);
+
+    if (password.length < 12) {
+      setError("Password must be at least 12 characters.");
+      return;
+    }
+
     setLoading(true);
-
-    const form = e.currentTarget;
-    const name = (form.elements.namedItem('name') as HTMLInputElement).value;
-    const email = (form.elements.namedItem('email') as HTMLInputElement).value;
-    const password = (form.elements.namedItem('password') as HTMLInputElement).value;
-    const confirmPassword = (form.elements.namedItem('confirmPassword') as HTMLInputElement).value;
-
     try {
-      const res = await fetch('/api/auth/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, password, confirmPassword }),
+      const res = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, email, password }),
       });
 
-      if (res.status === 201) {
-        router.push('/');
-        return;
-      }
-
-      const data = (await res.json()) as {
-        error?: string;
-        errors?: { field: string; message: string }[];
-      };
-
-      if (res.status === 409) {
-        setErrors({ email: data.error ?? 'Email already registered.' });
-      } else if (res.status === 422 && data.errors) {
-        const fieldErrors: Record<string, string> = {};
-        for (const err of data.errors) {
-          fieldErrors[err.field] = err.message;
-        }
-        setErrors(fieldErrors);
+      if (res.ok) {
+        router.push("/");
       } else {
-        setGlobalError('Something went wrong. Please try again.');
+        const data = (await res.json()) as { error: string };
+        if (data.error === "email_already_registered") {
+          setError("An account with that email already exists.");
+        } else if (data.error === "validation_error") {
+          setError("Please check your input and try again.");
+        } else {
+          setError("Registration failed. Please try again.");
+        }
       }
     } catch {
-      setGlobalError('Something went wrong. Please try again.');
+      setError("Network error. Please try again.");
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center p-8">
-      <div className="w-full max-w-sm rounded-2xl border border-neutral-800 bg-neutral-900 px-8 py-8">
-        <h1 className="mb-6 text-xl font-semibold tracking-tight text-neutral-100">Create account</h1>
-
-        <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
-          <Field label="Name" id="name" name="name" type="text" autoComplete="name" placeholder="Your name" error={errors['name']} />
-          <Field label="Email" id="email" name="email" type="email" autoComplete="email" placeholder="you@example.com" error={errors['email']} />
-          <Field label="Password" id="password" name="password" type="password" autoComplete="new-password" placeholder="Min 8 characters" error={errors['password']} />
-          <Field label="Confirm password" id="confirmPassword" name="confirmPassword" type="password" autoComplete="new-password" placeholder="••••••••" error={errors['confirmPassword']} />
-
-          {globalError && <p className="text-xs text-red-400">{globalError}</p>}
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="mt-1 rounded-lg bg-neutral-700 py-2 text-sm font-medium text-neutral-100 transition hover:bg-neutral-600 disabled:opacity-50"
-          >
-            {loading ? 'Creating account…' : 'Create account'}
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        minHeight: "100vh",
+      }}
+    >
+      <div className="card" style={{ width: "100%", maxWidth: "380px" }}>
+        <h1 style={{ fontSize: "20px", fontWeight: 700, marginBottom: "1.5rem" }}>
+          Create account
+        </h1>
+        <form
+          onSubmit={handleSubmit}
+          style={{ display: "flex", flexDirection: "column", gap: "1rem" }}
+        >
+          <div>
+            <label
+              htmlFor="name"
+              style={{
+                display: "block",
+                marginBottom: "4px",
+                color: "var(--text-muted)",
+                fontSize: "12px",
+              }}
+            >
+              NAME
+            </label>
+            <input
+              id="name"
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+              autoComplete="name"
+            />
+          </div>
+          <div>
+            <label
+              htmlFor="email"
+              style={{
+                display: "block",
+                marginBottom: "4px",
+                color: "var(--text-muted)",
+                fontSize: "12px",
+              }}
+            >
+              EMAIL
+            </label>
+            <input
+              id="email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              autoComplete="email"
+            />
+          </div>
+          <div>
+            <label
+              htmlFor="password"
+              style={{
+                display: "block",
+                marginBottom: "4px",
+                color: "var(--text-muted)",
+                fontSize: "12px",
+              }}
+            >
+              PASSWORD{" "}
+              <span style={{ fontWeight: 400 }}>(min 12 characters)</span>
+            </label>
+            <input
+              id="password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              autoComplete="new-password"
+            />
+          </div>
+          {error && <p className="error-msg">{error}</p>}
+          <button type="submit" className="primary" disabled={loading}>
+            {loading ? "Creating account…" : "Create account"}
           </button>
+          <p style={{ textAlign: "center", color: "var(--text-muted)", fontSize: "13px" }}>
+            Already have an account?{" "}
+            <a href="/login">Sign in</a>
+          </p>
         </form>
-
-        <p className="mt-5 text-center text-xs text-neutral-600">
-          Already have an account?{' '}
-          <a href="/login" className="text-neutral-400 underline hover:text-neutral-200">
-            Sign in
-          </a>
-        </p>
       </div>
-    </main>
-  );
-}
-
-interface FieldProps {
-  label: string;
-  id: string;
-  name: string;
-  type: string;
-  autoComplete?: string;
-  placeholder?: string;
-  error?: string;
-}
-
-function Field({ label, id, name, type, autoComplete, placeholder, error }: FieldProps) {
-  return (
-    <div className="flex flex-col gap-1">
-      <label htmlFor={id} className="text-xs font-medium text-neutral-400">
-        {label}
-      </label>
-      <input
-        id={id}
-        name={name}
-        type={type}
-        autoComplete={autoComplete}
-        placeholder={placeholder}
-        className="rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm text-neutral-100 placeholder-neutral-600 outline-none focus:border-neutral-500"
-      />
-      {error && <p className="text-xs text-red-400">{error}</p>}
     </div>
   );
 }

@@ -1,32 +1,50 @@
 ---
 name: test
-description: Required acceptance phase — automated E2E checks plus manual integration and acceptance testing before commit
+description: Risk-based acceptance phase — run tests proportional to what changed
 ---
 
-Implementation is complete. Before committing, run the full acceptance suite:
+Implementation is complete. Run tests proportional to the lane and the affected surface:
 
-1. **Automated E2E tests** (where available)
-   - Run Playwright tests under `apps/web/e2e/*.spec.ts` for any affected player-facing flows.
-   - If no E2E coverage exists yet for this feature, note that explicitly — the phase is still required.
+### 1. Automated tests (always required)
 
-2. **Manual integration testing**
-   - Start all affected services locally (`npm run dev:web`, `dev:inference`, `dev:workers` as needed).
-   - Walk through the user stories from the approved spec end-to-end, verifying each acceptance criterion.
-   - Confirm auth enforcement, error handling, and edge cases described in the spec behave correctly.
+Run the relevant unit and integration tests for the changed code:
 
-3. **Manual acceptance testing**
-   - Confirm the feature meets the stated Goal in the spec from the user's perspective.
-   - Confirm no regressions in adjacent flows (e.g. if ingestion was touched, check that existing sources still display and delete correctly).
+```
+npm run test --workspace=<affected-app>
+```
 
-Rules that always apply during this phase:
+Report which test files ran, how many passed/failed, and any coverage gaps in the changed service paths.
+
+### 2. E2E tests (required only when warranted)
+
+Run Playwright E2E tests if **any** of the following apply:
+
+- The change affects a player-facing UI flow
+- The change touches a path that already has `apps/web/e2e/*.spec.ts` coverage
+- The change crosses service boundaries (web ↔ inference ↔ workers)
+
+If none of these apply, note that explicitly — the phase is still satisfied.
+
+### 3. Manual acceptance (required only when warranted)
+
+Perform manual integration and acceptance testing if **any** of the following apply:
+
+- The change is cross-service or schema-touching
+- The automated tests cover less than 80% of the changed service path
+- The feature has a meaningful UX flow with no existing E2E coverage
+
+Walk through the relevant user stories from the spec (or task summary for fast-lane tasks), verifying each acceptance criterion. Confirm auth enforcement, error handling, and documented edge cases.
+
+### Rules
 
 - Do NOT add new code here — if a test reveals a defect, go back to `/implement` for the fix, then re-run `/test`.
 - Document every test run result (pass / fail / skipped) in your output.
-- A skipped automated test must have a reason noted (e.g. "E2E not yet written for this flow").
+- A skipped automated test must have a reason noted.
+- Surfaced follow-up items: flag them, do NOT fix them here — raise a new `/task`.
 
-When all checks pass, output a summary with:
+When checks pass, output a summary with:
 
-- What was tested (E2E, manual flows, edge cases)
+- What was tested (automated, E2E, manual) and why each was included or skipped
 - Pass / fail status per item
-- Any follow-up items surfaced (do NOT fix them here — flag for a new `/task`)
+- Any follow-up items surfaced
 - Signal: `All acceptance checks passed. Ready to commit.`

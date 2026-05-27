@@ -1,51 +1,14 @@
-import mongoose from 'mongoose';
+// Existing models (canonical definitions — consuming apps re-export from here)
+export { UserModel, type IUser } from "./models/user.model.js";
+export { RagSourceModel, type IRagSource } from "./models/rag-source.model.js";
+export { RagDocumentModel, type IRagDocument } from "./models/rag-document.model.js";
+export { RagIngestionJobModel, type IRagIngestionJob } from "./models/rag-ingestion-job.model.js";
 
-// ─── Connection ───────────────────────────────────────────────────────────────
-
-let _connectionPromise: Promise<typeof mongoose> | null = null;
-
-/**
- * Connect to MongoDB. Safe to call repeatedly — returns immediately if already
- * connected, deduplicates concurrent calls via a module-level promise.
- */
-export async function connect(uri: string): Promise<void> {
-  if (mongoose.connection.readyState >= 1) return;
-  if (!_connectionPromise) {
-    _connectionPromise = mongoose.connect(uri, { bufferCommands: false });
-    _connectionPromise.catch(() => {
-      // reset so the next call retries
-      _connectionPromise = null;
-    });
-  }
-  await _connectionPromise;
-}
-
-export function getState() {
-  return mongoose.connection.readyState;
-}
-
-// ─── Models ───────────────────────────────────────────────────────────────────
-
-export { User } from './models/user.model.js';
-export { Game } from './models/game.model.js';
-export { PlaySession } from './models/play-session.model.js';
-export { HintInteraction } from './models/hint-interaction.model.js';
-export { RagSource } from './models/rag-source.model.js';
-export { RagIngestionJob } from './models/rag-ingestion-job.model.js';
-export { RagDocument } from './models/rag-document.model.js';
-
-// ─── Type re-exports ──────────────────────────────────────────────────────────
-
-export type { IUser, IUserProfile } from './models/user.model.js';
-export type { IGame } from './models/game.model.js';
-export type { IPlaySession, ICurrentContext, IContextEvent } from './models/play-session.model.js';
-export type { IHintInteraction, IHintRequest, IHintResponse } from './models/hint-interaction.model.js';
-export type {
-  IRagSource,
-  ISourceMetadata,
-  SourceType,
-  SourceStatus,
-  SpoilerLevel,
-} from './models/rag-source.model.js';
-export type { IRagIngestionJob, JobStatus } from './models/rag-ingestion-job.model.js';
-export type { IRagDocument } from './models/rag-document.model.js';
+// Inference models
+export { GameModel, type IGame } from "./models/game.model.js";
+export { ProfileModel, type IProfile, type Playstyle, type HintPhilosophy, type SpoilerTolerance } from "./models/profile.model.js";
+export { PreferencesModel, type IPreferences } from "./models/preferences.model.js";
+export { PlaySessionModel, type IPlaySession } from "./models/play-session.model.js";
+export { RunContextModel, type IRunContext, type PlayerGoal, type ConfidenceLevel } from "./models/run-context.model.js";
+export { HintRequestModel, type IHintRequest } from "./models/hint-request.model.js";
+export { HintResponseModel, type IHintResponse, type RefusalReason } from "./models/hint-response.model.js";

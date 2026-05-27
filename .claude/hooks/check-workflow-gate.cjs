@@ -1,8 +1,13 @@
 #!/usr/bin/env node
 // PreToolUse hook for Write/Edit/NotebookEdit.
-// Blocks edits under apps/** unless .claude/.workflow-gate contains "ready-to-implement".
-// The /log command writes the gate; /implement deletes it when done.
-// See CLAUDE.md "Mandatory Workflow" for the 4-phase flow this enforces.
+// Blocks edits under apps/inference/src/ (LLM/RAG trust-critical path) and
+// packages/db/src/ (schema changes) unless .claude/.workflow-gate contains
+// "ready-to-implement". All other paths are unblocked.
+//
+// Gate lifecycle (decision lane only):
+//   /log writes the gate → /implement deletes it when finished.
+// Fast-lane and spec-lane tasks never touch these protected paths.
+// See CLAUDE.md "Workflow" for the 3-lane routing model.
 
 const fs = require("fs");
 const path = require("path");
@@ -10,7 +15,11 @@ const path = require("path");
 const PROJECT_ROOT = process.cwd();
 const GATE_FILE = path.join(PROJECT_ROOT, ".claude", ".workflow-gate");
 const GATE_VALUE = "ready-to-implement";
-const PROTECTED_PREFIX = path.join(PROJECT_ROOT, "apps") + path.sep;
+
+const PROTECTED_PREFIXES = [
+  path.join(PROJECT_ROOT, "apps", "inference", "src") + path.sep,
+  path.join(PROJECT_ROOT, "packages", "db", "src") + path.sep,
+];
 
 function allow() {
   process.stdout.write(
@@ -54,7 +63,10 @@ process.stdin.on("end", () => {
   if (!filePath) return allow();
 
   const abs = path.resolve(PROJECT_ROOT, filePath);
-  if (!abs.startsWith(PROTECTED_PREFIX)) return allow();
+  const isProtected = PROTECTED_PREFIXES.some((prefix) =>
+    abs.startsWith(prefix),
+  );
+  if (!isProtected) return allow();
 
   let gate = "";
   try {
@@ -64,10 +76,15 @@ process.stdin.on("end", () => {
   }
   if (gate === GATE_VALUE) return allow();
 
+  const rel = path.relative(PROJECT_ROOT, abs);
+  const which = abs.includes(path.join("apps", "inference", "src"))
+    ? "apps/inference/src/ (LLM/RAG trust-critical path)"
+    : "packages/db/src/ (schema changes)";
+
   return deny(
-    `Workflow gate not passed for edits under apps/**.\n` +
-      `Run /task → /spec → /log before /implement. The /log command writes ` +
-      `.claude/.workflow-gate; /implement removes it when finished.\n` +
-      `Blocked path: ${path.relative(PROJECT_ROOT, abs)}`,
+    `Workflow gate not passed for edits under ${which}.\n` +
+      `This path requires the decision lane: /task → /spec → /log before /implement.\n` +
+      `The /log command writes .claude/.workflow-gate; /implement removes it when finished.\n` +
+      `Blocked path: ${rel}`,
   );
 });

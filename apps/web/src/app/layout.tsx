@@ -1,20 +1,20 @@
-import type { Metadata } from 'next';
-import type { ReactNode } from 'react';
-import NavBanner from '@/components/layout/nav-banner';
-import './globals.css';
+import type { Metadata, Viewport } from "next";
+import type { ReactNode } from "react";
+import "./globals.css";
 
 export const metadata: Metadata = {
-  title: 'SecondSeat',
-  description: 'Second-screen, spoiler-safe gaming companion.',
+  title: "SecondSeat",
+  description: "Second-screen AI companion for gamers.",
+};
+
+export const viewport: Viewport = {
+  themeColor: "#000000",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
-      <body className="bg-neutral-950 text-neutral-100">
-        <NavBanner />
-        {children}
-      </body>
+      <body>{children}</body>
     </html>
   );
 }
