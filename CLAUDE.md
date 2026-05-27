@@ -10,6 +10,8 @@ Built for a **5-week competition sprint** (SG Tech Week product challenge, submi
 
 ---
 
+> **Setup & commands:** see [README.md](README.md) for infrastructure startup, service ports, and all `npm run` / `vitest` commands.
+
 ## 🚦 Workflow — Read This First
 
 Every task is routed through one of three lanes based on risk and scope. **Choose the lane first, then follow only its required steps.** The slash commands still exist; their applicability is now lane-dependent.
