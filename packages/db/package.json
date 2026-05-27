@@ -7,7 +7,7 @@
   "exports": {
     ".": "./src/index.ts"
   },
-  "dependencies": {
+  "peerDependencies": {
     "mongoose": "^8.8.0"
   },
   "devDependencies": {
