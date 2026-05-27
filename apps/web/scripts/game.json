@@ -1,0 +1,26 @@
+[
+  {
+    "title": "Resident Evil 2 Remake",
+    "slug": "resident-evil-2-remake",
+    "developer": "Capcom",
+    "releaseYear": 2019,
+    "genre": "Survival Horror",
+    "supported": true
+  },
+  {
+    "title": "Elden Ring",
+    "slug": "elden-ring",
+    "developer": "FromSoftware",
+    "releaseYear": 2022,
+    "genre": "Action RPG, Souls-like",
+    "supported": true
+  },
+  {
+    "title": "Valheim",
+    "slug": "valheim",
+    "developer": "Iron Gate Studio",
+    "releaseYear": 2021,
+    "genre": "Survival, Sandbox",
+    "supported": true
+  }
+]
