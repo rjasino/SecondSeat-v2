@@ -40,6 +40,7 @@ export default async function DashboardLayout({
           SecondSeat
         </span>
         <a href="/dashboard/ingest">Ingestion</a>
+        <a href="/dashboard/play">Play</a>
         <span style={{ marginLeft: "auto" }}>
           <form action="/api/auth/logout" method="POST" style={{ display: "inline" }}>
             <button type="submit" className="ghost" style={{ fontSize: "12px", padding: "4px 10px" }}>

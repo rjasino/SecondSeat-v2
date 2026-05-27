@@ -8,7 +8,7 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "seed:privileged": "tsx --env-file=.env.local scripts/seed-privileged-users.ts"
+    "seed": "tsx --env-file=.env.local scripts/seed-data.ts"
   },
   "dependencies": {
     "@tiptap/extension-character-count": "^3.23.5",

@@ -35,4 +35,6 @@ export const config = {
   CHROMA_URL: process.env["CHROMA_URL"] ?? "http://localhost:8000",
   CHROMA_COLLECTION: process.env["CHROMA_COLLECTION"] ?? "secondseat_rag",
   GAME_ID: process.env["GAME_ID"] ?? "default",
+  INFERENCE_URL: requireEnv("INFERENCE_URL"),
+  INFERENCE_SERVICE_SECRET: requireEnv("INFERENCE_SERVICE_SECRET"),
 } as const;
