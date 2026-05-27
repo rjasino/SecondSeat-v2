@@ -1,192 +1,166 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// ─── Mocks ────────────────────────────────────────────────────────────────────
+vi.mock("@/lib/session", () => ({
+  getSession: vi.fn(),
+}));
 
-vi.mock('@/lib/session', () => ({ getSession: vi.fn() }));
-vi.mock('@/lib/db', () => ({ ensureDb: vi.fn().mockResolvedValue(undefined) }));
-vi.mock('@/lib/turndown', () => ({ htmlToMarkdown: vi.fn((h: string) => h) }));
+vi.mock("@/lib/db", () => ({
+  connectDB: vi.fn().mockResolvedValue(undefined),
+}));
 
-vi.mock('@secondseat/db', () => ({
-  RagSource: {
+vi.mock("@/models/rag-source.model", () => ({
+  RagSourceModel: {
     findById: vi.fn(),
+    findByIdAndUpdate: vi.fn().mockResolvedValue(null),
     findByIdAndDelete: vi.fn().mockResolvedValue(null),
   },
 }));
 
-vi.mock('mongoose', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('mongoose')>();
-  return {
-    ...actual,
-    default: {
-      ...actual.default,
-      isValidObjectId: (id: string) => /^[a-f\d]{24}$/i.test(id),
-    },
-  };
-});
+vi.mock("@/models/rag-ingestion-job.model", () => ({
+  RagIngestionJobModel: {
+    deleteMany: vi.fn().mockResolvedValue(undefined),
+  },
+}));
 
-// ─── Imports (after mocks) ────────────────────────────────────────────────────
+vi.mock("@/lib/ingest/ingest.service", () => ({
+  findDuplicateSource: vi.fn().mockResolvedValue(null),
+}));
 
-import { DELETE, PATCH } from './route';
-import { getSession } from '@/lib/session';
-import { RagSource } from '@secondseat/db';
+import { DELETE, PUT } from "./route";
+import { getSession } from "@/lib/session";
+import { RagSourceModel } from "@/models/rag-source.model";
+import { RagIngestionJobModel } from "@/models/rag-ingestion-job.model";
+import { findDuplicateSource } from "@/lib/ingest/ingest.service";
 
-const mockGetSession = vi.mocked(getSession);
-const mockRagSource = vi.mocked(RagSource);
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-const VALID_SOURCE_ID = '507f1f77bcf86cd799439012';
-const VALID_USER_ID = '507f1f77bcf86cd799439013';
-
-function makeParams(sourceId = VALID_SOURCE_ID) {
+function makeParams(sourceId: string) {
   return { params: Promise.resolve({ sourceId }) };
 }
 
-function makeRequest(method: string, body?: unknown) {
-  return new Request(`http://localhost/api/ingest/drafts/${VALID_SOURCE_ID}`, {
-    method,
-    headers: body ? { 'Content-Type': 'application/json' } : {},
-    body: body ? JSON.stringify(body) : undefined,
-  });
+function makeDeleteRequest(): Request {
+  return new Request(
+    "http://localhost/api/ingest/drafts/source-abc",
+    { method: "DELETE" }
+  );
 }
 
-function makeAdminSession() {
-  return { user: { userId: VALID_USER_ID, role: 'admin' as const } };
+function makePutRequest(body: unknown): Request {
+  return new Request(
+    "http://localhost/api/ingest/drafts/source-abc",
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }
+  );
 }
 
-function makeAuthorSession(userId = VALID_USER_ID) {
-  return { user: { userId, role: 'author' as const } };
-}
+const adminSession = { userId: "admin-1", role: "admin" };
 
-function makeDraftSource(createdBy = VALID_USER_ID) {
-  return {
-    _id: { toString: () => VALID_SOURCE_ID },
-    title: 'Draft Title',
-    status: 'draft',
-    content: 'existing content',
-    createdBy: { toString: () => createdBy },
-    metadata: { game: 'Zelda', area: 'Temple', spoilerLevel: 'low' },
-    save: vi.fn().mockResolvedValue(null),
-  };
-}
+const draftSource = {
+  status: "draft",
+  content: "existing content",
+  metadata: { game: "Elden Ring", author: "Fextralife" },
+};
 
-// ─── DELETE tests ─────────────────────────────────────────────────────────────
+beforeEach(() => {
+  vi.clearAllMocks();
+  vi.mocked(getSession).mockResolvedValue(adminSession as never);
+  vi.mocked(RagSourceModel.findById).mockResolvedValue(draftSource as never);
+  vi.mocked(RagSourceModel.findByIdAndDelete).mockResolvedValue(null);
+  vi.mocked(findDuplicateSource).mockResolvedValue(null);
+});
 
-describe('DELETE /api/ingest/drafts/:sourceId', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockRagSource.findById.mockResolvedValue(makeDraftSource() as never);
-    mockRagSource.findByIdAndDelete.mockResolvedValue(null as never);
-  });
+// ─── DELETE ──────────────────────────────────────────────────────────────────
 
-  it('returns 401 when no session', async () => {
-    mockGetSession.mockResolvedValue({ user: undefined } as never);
-    const res = await DELETE(makeRequest('DELETE'), makeParams());
+describe("DELETE /api/ingest/drafts/[sourceId]", () => {
+  it("returns 401 when unauthenticated", async () => {
+    vi.mocked(getSession).mockResolvedValue({ userId: undefined } as never);
+    const res = await DELETE(makeDeleteRequest(), makeParams("source-abc"));
     expect(res.status).toBe(401);
   });
 
-  it('returns 403 when role is author (not admin)', async () => {
-    mockGetSession.mockResolvedValue(makeAuthorSession() as never);
-    const res = await DELETE(makeRequest('DELETE'), makeParams());
+  it("returns 403 when authenticated as non-admin", async () => {
+    vi.mocked(getSession).mockResolvedValue({ userId: "user-1", role: "user" } as never);
+    const res = await DELETE(makeDeleteRequest(), makeParams("source-abc"));
     expect(res.status).toBe(403);
   });
 
-  it('returns 404 for invalid ObjectId format', async () => {
-    mockGetSession.mockResolvedValue(makeAdminSession() as never);
-    const res = await DELETE(makeRequest('DELETE'), makeParams('bad-id'));
+  it("returns 404 when source does not exist", async () => {
+    vi.mocked(RagSourceModel.findById).mockResolvedValue(null);
+    const res = await DELETE(makeDeleteRequest(), makeParams("source-abc"));
     expect(res.status).toBe(404);
   });
 
-  it('returns 404 when source does not exist', async () => {
-    mockGetSession.mockResolvedValue(makeAdminSession() as never);
-    mockRagSource.findById.mockResolvedValue(null as never);
-    const res = await DELETE(makeRequest('DELETE'), makeParams());
-    expect(res.status).toBe(404);
-  });
-
-  it('returns 409 when source status is not draft', async () => {
-    mockGetSession.mockResolvedValue(makeAdminSession() as never);
-    mockRagSource.findById.mockResolvedValue({
-      ...makeDraftSource(),
-      status: 'completed',
-    } as never);
-    const res = await DELETE(makeRequest('DELETE'), makeParams());
+  it("returns 409 when source is not a draft", async () => {
+    vi.mocked(RagSourceModel.findById).mockResolvedValue({ status: "completed" } as never);
+    const res = await DELETE(makeDeleteRequest(), makeParams("source-abc"));
     expect(res.status).toBe(409);
   });
 
-  it('returns 204 and hard-deletes on valid draft delete', async () => {
-    mockGetSession.mockResolvedValue(makeAdminSession() as never);
-    const res = await DELETE(makeRequest('DELETE'), makeParams());
+  it("hard-deletes draft and returns 204", async () => {
+    const res = await DELETE(makeDeleteRequest(), makeParams("source-abc"));
     expect(res.status).toBe(204);
-    expect(mockRagSource.findByIdAndDelete).toHaveBeenCalledWith(VALID_SOURCE_ID);
+    expect(RagIngestionJobModel.deleteMany).toHaveBeenCalledWith({ sourceId: "source-abc" });
+    expect(RagSourceModel.findByIdAndDelete).toHaveBeenCalledWith("source-abc");
   });
 });
 
-// ─── PATCH tests ──────────────────────────────────────────────────────────────
+// ─── PUT ─────────────────────────────────────────────────────────────────────
 
-describe('PATCH /api/ingest/drafts/:sourceId', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockRagSource.findById.mockResolvedValue(makeDraftSource() as never);
-  });
-
-  it('returns 401 when no session', async () => {
-    mockGetSession.mockResolvedValue({ user: undefined } as never);
-    const res = await PATCH(makeRequest('PATCH', { title: 'New Title' }), makeParams());
+describe("PUT /api/ingest/drafts/[sourceId]", () => {
+  it("returns 401 when unauthenticated", async () => {
+    vi.mocked(getSession).mockResolvedValue({ userId: undefined } as never);
+    const res = await PUT(makePutRequest({ title: "New Title" }), makeParams("source-abc"));
     expect(res.status).toBe(401);
   });
 
-  it('returns 403 for insufficient role (user)', async () => {
-    mockGetSession.mockResolvedValue({ user: { userId: VALID_USER_ID, role: 'user' } } as never);
-    const res = await PATCH(makeRequest('PATCH', { title: 'New Title' }), makeParams());
-    expect(res.status).toBe(403);
-  });
-
-  it('returns 404 for invalid ObjectId format', async () => {
-    mockGetSession.mockResolvedValue(makeAuthorSession() as never);
-    const res = await PATCH(makeRequest('PATCH', { title: 'x' }), makeParams('bad-id'));
+  it("returns 404 when source does not exist", async () => {
+    vi.mocked(RagSourceModel.findById).mockResolvedValue(null);
+    const res = await PUT(makePutRequest({ title: "New Title" }), makeParams("source-abc"));
     expect(res.status).toBe(404);
   });
 
-  it('returns 404 when source does not exist', async () => {
-    mockGetSession.mockResolvedValue(makeAuthorSession() as never);
-    mockRagSource.findById.mockResolvedValue(null as never);
-    const res = await PATCH(makeRequest('PATCH', { title: 'x' }), makeParams());
-    expect(res.status).toBe(404);
-  });
-
-  it('returns 403 when author does not own the source', async () => {
-    mockGetSession.mockResolvedValue(makeAuthorSession('aaaaaaaaaaaaaaaaaaaaaaaa') as never);
-    mockRagSource.findById.mockResolvedValue(makeDraftSource(VALID_USER_ID) as never);
-    const res = await PATCH(makeRequest('PATCH', { title: 'x' }), makeParams());
-    expect(res.status).toBe(403);
-  });
-
-  it('returns 409 when source is not a draft', async () => {
-    mockGetSession.mockResolvedValue(makeAuthorSession() as never);
-    mockRagSource.findById.mockResolvedValue({
-      ...makeDraftSource(),
-      status: 'completed',
-    } as never);
-    const res = await PATCH(makeRequest('PATCH', { title: 'x' }), makeParams());
+  it("returns 409 when source is not a draft", async () => {
+    vi.mocked(RagSourceModel.findById).mockResolvedValue({ status: "completed" } as never);
+    const res = await PUT(makePutRequest({ title: "New Title" }), makeParams("source-abc"));
     expect(res.status).toBe(409);
   });
 
-  it('returns 204 and saves updates on valid patch', async () => {
-    mockGetSession.mockResolvedValue(makeAuthorSession() as never);
-    const source = makeDraftSource();
-    mockRagSource.findById.mockResolvedValue(source as never);
-    const res = await PATCH(makeRequest('PATCH', { title: 'Updated Title' }), makeParams());
-    expect(res.status).toBe(204);
-    expect(source.save).toHaveBeenCalled();
+  it("returns 200 and persists updates for a valid draft", async () => {
+    const res = await PUT(
+      makePutRequest({ title: "Updated Title", author: "NewAuthor" }),
+      makeParams("source-abc")
+    );
+    expect(res.status).toBe(200);
+    expect(RagSourceModel.findByIdAndUpdate).toHaveBeenCalledWith(
+      "source-abc",
+      expect.objectContaining({
+        $set: expect.objectContaining({ title: "Updated Title", "metadata.author": "NewAuthor" }),
+      })
+    );
   });
 
-  it('allows admin to patch a source they do not own', async () => {
-    mockGetSession.mockResolvedValue(makeAdminSession() as never);
-    mockRagSource.findById.mockResolvedValue(
-      makeDraftSource('bbbbbbbbbbbbbbbbbbbbbbbb') as never,
+  it("returns 409 with existingSourceId when new game+author would conflict", async () => {
+    vi.mocked(findDuplicateSource).mockResolvedValue("conflicting-source-id");
+    const res = await PUT(
+      makePutRequest({ author: "ConflictingAuthor" }),
+      makeParams("source-abc")
     );
-    const res = await PATCH(makeRequest('PATCH', { title: 'Admin Edit' }), makeParams());
-    expect(res.status).toBe(204);
+    expect(res.status).toBe(409);
+    const body = await res.json() as { error: string; existingSourceId: string };
+    expect(body.error).toBe("duplicate_source");
+    expect(body.existingSourceId).toBe("conflicting-source-id");
+  });
+
+  it("passes sourceId as excludeId to findDuplicateSource to avoid self-conflict", async () => {
+    await PUT(
+      makePutRequest({ author: "SameAuthor" }),
+      makeParams("source-abc")
+    );
+    expect(findDuplicateSource).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.any(String),
+      "source-abc"
+    );
   });
 });

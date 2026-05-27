@@ -1,134 +1,194 @@
-import crypto from 'node:crypto';
-import { type Job } from 'bullmq';
+import type { Job } from "bullmq";
+import { randomUUID } from "crypto";
+import type { IngestionJobData } from "../queues/ingestion-queue.js";
+import { RagSourceModel } from "../models/rag-source.model.js";
+import { RagDocumentModel } from "../models/rag-document.model.js";
+import { loadMarkdown, IngestionError } from "../services/load/md.reader.js";
+import { loadHtml } from "../services/load/html.reader.js";
+import { cleanMarkdown } from "../services/load/clean.js";
+import { chunkText } from "../services/chunk/node-parser.service.js";
+import { embedText } from "../services/embed/embedding.service.js";
+import { upsertVectors, deleteVectors } from "../services/vector/chroma.client.js";
+import { classifyChunk } from "../services/classify/chunk-classifier.js";
 import {
-  RagSource,
-  RagIngestionJob,
-  RagDocument,
-  type ISourceMetadata,
-} from '@secondseat/db';
-import { embed } from '@secondseat/embedding';
-import { chunkMarkdown } from '../services/chunker.js';
-import { upsertVector } from '../services/chroma.js';
-import type { IngestionJobData } from './ingestion.types.js';
+  markJobProcessing,
+  setTotalChunks,
+  incrementProgress,
+  markJobCompleted,
+  markJobFailed,
+} from "../services/progress.service.js";
 
-export interface ProcessorDeps {
-  chromaUrl: string;
-  collectionName: string;
+const ERROR_CODE_MAP: Record<string, string> = {
+  empty_content: "empty_content",
+  extraction_failed: "extraction_failed",
+  embedding_failed: "embedding_failed",
+  vector_store_failed: "vector_store_failed",
+};
+
+function toStableErrorCode(err: unknown): string {
+  if (err instanceof IngestionError) {
+    return ERROR_CODE_MAP[err.code] ?? "unknown";
+  }
+  return "unknown";
 }
 
-/**
- * BullMQ processor for the `ingestion` queue.
- *
- * Flow: load source → chunk markdown → embed each chunk → upsert to ChromaDB
- * → write rag_documents → update job progress → mark completed.
- */
+function toSafeMessage(err: unknown): string {
+  if (err instanceof IngestionError) return err.message;
+  if (err instanceof Error) return err.message.slice(0, 512);
+  return "An unexpected error occurred";
+}
+
 export async function processIngestionJob(
-  job: Job<IngestionJobData>,
-  deps: ProcessorDeps,
+  job: Job<IngestionJobData>
 ): Promise<void> {
-  const { sourceId, jobMongoId } = job.data;
-  const { chromaUrl, collectionName } = deps;
+  const { sourceId, jobDocId, gameId, author } = job.data;
 
-  // ─── 1. Load source & mark processing ────────────────────────────────────
+  await markJobProcessing(jobDocId, sourceId);
 
-  const source = await RagSource.findById(sourceId);
-  if (!source) throw new Error(`RagSource not found: ${sourceId}`);
-
-  await Promise.all([
-    RagIngestionJob.findByIdAndUpdate(jobMongoId, {
-      status: 'processing',
-      startedAt: new Date(),
-    }),
-    RagSource.findByIdAndUpdate(sourceId, { status: 'processing', startedAt: new Date() }),
-  ]);
-
-  // ─── 2. Chunk markdown ────────────────────────────────────────────────────
-
-  const chunks = chunkMarkdown(source.content);
-
-  if (chunks.length === 0) {
-    const err = 'No chunks produced';
-    await Promise.all([
-      RagIngestionJob.findByIdAndUpdate(jobMongoId, {
-        status: 'failed',
-        error: err,
-        finishedAt: new Date(),
-      }),
-      RagSource.findByIdAndUpdate(sourceId, { status: 'failed', finishedAt: new Date() }),
-    ]);
-    throw new Error(err);
-  }
-
-  await RagIngestionJob.findByIdAndUpdate(jobMongoId, { totalChunks: chunks.length });
-
-  // ─── 3. Embed → upsert → record each chunk ────────────────────────────────
-
-  const metadata: ISourceMetadata = source.metadata ?? {
-    game: 'unknown',
-    area: 'unknown',
-    spoilerLevel: 'none',
-  };
-
-  for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
-    const chunk = chunks[chunkIndex]!;
-
-    // Embed — rethrow on failure so BullMQ retries
-    const embedding = await embed(chunk.text);
-
-    // Upsert to ChromaDB — rethrow on failure so BullMQ retries
-    const vectorId = await upsertVector({
-      chromaUrl,
-      collectionName,
-      sourceId,
-      chunkIndex,
-      embedding,
-      document: chunk.text,
-      metadata: {
-        sourceId,
-        chunkIndex,
-        game: metadata.game,
-        area: metadata.area,
-        spoilerLevel: metadata.spoilerLevel,
-      },
-    });
-
-    // Write rag_documents — upsert on { sourceId, chunkIndex } for idempotency
-    const hash = crypto.createHash('sha256').update(chunk.text).digest('hex');
-    await RagDocument.findOneAndUpdate(
-      { sourceId, chunkIndex },
-      {
-        content: chunk.text,
-        hash,
-        vectorId,
-        tokens: chunk.tokens,
-        metadata,
-        sourceId,
-        chunkIndex,
-      },
-      { upsert: true, new: true },
-    );
-
-    // Increment processedChunks and recalculate progress
-    const updatedJob = await RagIngestionJob.findByIdAndUpdate(
-      jobMongoId,
-      { $inc: { processedChunks: 1 } },
-      { new: true },
-    );
-    if (updatedJob && updatedJob.totalChunks) {
-      const progress = Math.round((updatedJob.processedChunks / updatedJob.totalChunks) * 100);
-      await RagIngestionJob.findByIdAndUpdate(jobMongoId, { progress });
+  try {
+    // 1. Load source content
+    const source = await RagSourceModel.findById(sourceId);
+    if (!source?.content) {
+      throw new IngestionError("empty_content", "Source has no content to process");
     }
+
+    // 2. Load and validate document
+    const filename = source.sourceUri?.split(/[\\/]/).pop() ?? "content.md";
+    const isHtml = /\.(html|htm)$/i.test(filename);
+    const loaded = isHtml
+      ? loadHtml(source.content, filename)
+      : loadMarkdown(source.content, filename);
+
+    // 3. Clean — strip URLs, images, HTML tags, frontmatter noise
+    const cleaned = cleanMarkdown(loaded.content);
+
+    // 4. Chunk the content
+    const chunks = chunkText(cleaned);
+    if (chunks.length === 0) {
+      throw new IngestionError("empty_content", "Chunking produced no results");
+    }
+
+    await setTotalChunks(jobDocId, chunks.length);
+
+    // 5. Dedup — find already-embedded chunks for this source
+    const existingDocs = await RagDocumentModel.find({
+      sourceId,
+      hash: { $in: chunks.map((c) => c.hash) },
+    })
+      .select("hash vectorId")
+      .lean();
+
+    const existingByHash = new Map<string, string | undefined>(
+      existingDocs.map((d) => [d.hash, d.vectorId])
+    );
+
+    // 6. Embed + write each chunk
+    const writtenVectorIds: string[] = [];
+
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i]!;
+
+      if (existingByHash.has(chunk.hash)) {
+        await incrementProgress(jobDocId, i + 1, chunks.length);
+        continue;
+      }
+
+      // Classify chunk content
+      const { contentType, chapterNumber } = classifyChunk(
+        chunk.headingPath,
+        chunk.content
+      );
+
+      // Generate embedding
+      let embedding: number[];
+      try {
+        embedding = await embedText(chunk.content);
+      } catch (err) {
+        throw new IngestionError(
+          "embedding_failed",
+          err instanceof Error ? err.message : "Embedding failed"
+        );
+      }
+
+      const vectorId = `${sourceId}-${i}-${randomUUID()}`;
+
+      // Write to ChromaDB
+      try {
+        await upsertVectors([
+          {
+            id: vectorId,
+            embedding,
+            metadata: {
+              source_id: sourceId,
+              document_id: "",
+              chunk_index: chunk.chunkIndex,
+              game_id: gameId,
+              heading_path: chunk.headingPath,
+              author,
+            },
+            document: chunk.content,
+          },
+        ]);
+        writtenVectorIds.push(vectorId);
+      } catch (err) {
+        if (writtenVectorIds.length > 0) {
+          try {
+            await deleteVectors(writtenVectorIds);
+          } catch (cleanupErr) {
+            console.error("[processor] cleanup failed:", cleanupErr);
+          }
+        }
+        throw new IngestionError(
+          "vector_store_failed",
+          err instanceof Error ? err.message : "ChromaDB write failed"
+        );
+      }
+
+      // Persist RagDocument
+      const doc = await RagDocumentModel.create({
+        sourceId,
+        chunkIndex: chunk.chunkIndex,
+        content: chunk.content,
+        hash: chunk.hash,
+        vectorId,
+        metadata: {
+          headingPath: chunk.headingPath,
+          contentType,
+          chapterNumber,
+          author,
+        },
+        tokens: chunk.tokens,
+      });
+
+      // Back-fill document_id in Chroma metadata (best-effort, non-fatal)
+      try {
+        await upsertVectors([
+          {
+            id: vectorId,
+            embedding,
+            metadata: {
+              source_id: sourceId,
+              document_id: doc._id.toString(),
+              chunk_index: chunk.chunkIndex,
+              game_id: gameId,
+              heading_path: chunk.headingPath,
+              author,
+            },
+            document: chunk.content,
+          },
+        ]);
+      } catch {
+        // Non-fatal — document_id is a convenience field
+      }
+
+      await incrementProgress(jobDocId, i + 1, chunks.length);
+    }
+
+    await markJobCompleted(jobDocId, sourceId);
+  } catch (err) {
+    const code = toStableErrorCode(err);
+    const message = toSafeMessage(err);
+    await markJobFailed(jobDocId, sourceId, code, message);
+    throw err;
   }
-
-  // ─── 4. Mark completed ────────────────────────────────────────────────────
-
-  const finishedAt = new Date();
-  await Promise.all([
-    RagIngestionJob.findByIdAndUpdate(jobMongoId, {
-      status: 'completed',
-      finishedAt,
-      progress: 100,
-    }),
-    RagSource.findByIdAndUpdate(sourceId, { status: 'completed', finishedAt }),
-  ]);
 }

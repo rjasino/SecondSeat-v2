@@ -1,26 +1,9 @@
-import type { NextConfig } from 'next';
+import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
-  transpilePackages: [
-    '@secondseat/db',
-    '@tiptap/core',
-    '@tiptap/pm',
-    '@tiptap/react',
-    '@tiptap/starter-kit',
-    '@tiptap/extension-underline',
-    '@tiptap/extension-superscript',
-    '@tiptap/extension-subscript',
-  ],
-  webpack(config) {
-    // Allow TypeScript workspace packages that use .js extensions in their
-    // internal imports (TypeScript "Bundler" moduleResolution convention).
-    config.resolve.extensionAlias = {
-      '.js': ['.ts', '.js'],
-      '.jsx': ['.tsx', '.jsx'],
-    };
-    return config;
-  },
+  serverExternalPackages: ["argon2", "mongoose", "bullmq", "ioredis", "chromadb"],
+  transpilePackages: ["@secondseat/db"],
 };
 
 export default nextConfig;

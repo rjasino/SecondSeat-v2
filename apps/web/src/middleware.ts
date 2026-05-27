@@ -1,63 +1,85 @@
-import { unsealData } from 'iron-session';
-import { NextResponse } from 'next/server';
-import type { NextRequest } from 'next/server';
-import type { AppSession } from '@/lib/session';
+import { unsealData } from "iron-session";
+import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
 
-const SESSION_COOKIE = 'ss_session';
+// Inline type — cannot import session.ts here because it imports next/headers (Node.js only)
+interface SessionData {
+  userId?: string;
+  role?: "user" | "author" | "admin";
+}
 
-async function getSessionUser(request: NextRequest): Promise<AppSession['user'] | undefined> {
-  const cookieValue = request.cookies.get(SESSION_COOKIE)?.value;
-  if (!cookieValue) return undefined;
+const COOKIE_NAME = "secondseat-session";
+
+async function readSession(req: NextRequest): Promise<SessionData | null> {
+  const password = process.env["SESSION_PASSWORD"];
+  if (!password) return null;
+
+  const cookieValue = req.cookies.get(COOKIE_NAME)?.value;
+  if (!cookieValue) return null;
+
   try {
-    const session = await unsealData<AppSession>(cookieValue, {
-      password: process.env['SESSION_SECRET'] ?? '',
-    });
-    return session.user;
+    const data = await unsealData<SessionData>(cookieValue, { password });
+    return data.userId ? data : null;
   } catch {
-    return undefined;
+    // Invalid or tampered cookie
+    return null;
   }
 }
 
-export async function middleware(request: NextRequest): Promise<NextResponse> {
-  const { pathname } = request.nextUrl;
-  const user = await getSessionUser(request);
-  const role = user?.role;
+export async function middleware(req: NextRequest): Promise<NextResponse> {
+  const { pathname } = req.nextUrl;
 
-  // /api/ingest/* — role:user gets 403 JSON; unauthenticated → redirect /login
-  if (pathname.startsWith('/api/ingest')) {
-    if (!user) {
-      return NextResponse.redirect(new URL('/login', request.url));
-    }
-    if (role === 'user') {
-      return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  // Always pass through: Next.js internals, public auth endpoints, health check
+  if (
+    pathname.startsWith("/_next/") ||
+    pathname.startsWith("/api/auth/") ||
+    pathname.startsWith("/api/health") ||
+    pathname === "/favicon.ico"
+  ) {
+    return NextResponse.next();
+  }
+
+  const session = await readSession(req);
+
+  // /login and /register: public for guests, redirect away for authenticated users
+  if (pathname === "/login" || pathname === "/register") {
+    if (session) {
+      const dest =
+        session.role === "user" ? "/" : "/dashboard/ingest";
+      return NextResponse.redirect(new URL(dest, req.url));
     }
     return NextResponse.next();
   }
 
-  // /ingest/* UI routes — role:user → /, unauthenticated → /login
-  if (pathname.startsWith('/ingest')) {
-    if (!user) {
-      return NextResponse.redirect(new URL('/login', request.url));
+  // Privileged routes: /dashboard/** (UI) and /api/ingest/** (API)
+  if (
+    pathname.startsWith("/dashboard") ||
+    pathname.startsWith("/api/ingest")
+  ) {
+    if (!session) {
+      // Unauthenticated — API gets JSON 401, UI gets redirect to /login
+      if (pathname.startsWith("/api/")) {
+        return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+      }
+      return NextResponse.redirect(new URL("/login", req.url));
     }
-    if (role === 'user') {
-      return NextResponse.redirect(new URL('/', request.url));
+
+    if (session.role === "user") {
+      // Authenticated but insufficient role — API gets JSON 403, UI gets redirect to /
+      if (pathname.startsWith("/api/")) {
+        return NextResponse.json({ error: "forbidden" }, { status: 403 });
+      }
+      return NextResponse.redirect(new URL("/", req.url));
     }
+
+    // author or admin: proceed
     return NextResponse.next();
   }
 
-  // /login and /register — redirect already-authenticated users to their home
-  if (pathname === '/login' || pathname === '/register') {
-    if (user) {
-      const dest = role === 'user' ? '/' : '/ingest';
-      return NextResponse.redirect(new URL(dest, request.url));
-    }
-    return NextResponse.next();
-  }
-
-  // / — always public; no auto-redirect for any role
+  // All other routes (e.g. landing page /): no access restriction
   return NextResponse.next();
 }
 
 export const config = {
-  matcher: ['/', '/login', '/register', '/ingest/:path*', '/api/ingest/:path*'],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
 };

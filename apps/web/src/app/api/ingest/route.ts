@@ -1,216 +1,136 @@
-import { NextResponse } from 'next/server';
-import mongoose from 'mongoose';
-
-import { RagSource, RagIngestionJob } from '@secondseat/db';
-import { ensureDb } from '@/lib/db';
-import { getSession } from '@/lib/session';
-import { getIngestionQueue } from '@/lib/queue';
-import { htmlToMarkdown } from '@/lib/turndown';
-import { loadConfig } from '@/lib/config';
+import { NextResponse } from "next/server";
+import { writeFile, mkdir } from "fs/promises";
+import path from "path";
+import { fileTypeFromBuffer } from "file-type";
+import { connectDB } from "@/lib/db";
+import { RagSourceModel } from "@/models/rag-source.model";
+import { getSession } from "@/lib/session";
+import { config } from "@/lib/config";
 import {
-  fileIngestSchema,
-  textIngestSchema,
-  formatZodErrors,
   ALLOWED_EXTENSIONS,
-  ALLOWED_MIME_TYPES,
-} from '@/schemas/ingest';
+  type AllowedExtension,
+  uploadMetaSchema,
+} from "@/lib/ingest/schemas";
+import { extractContent } from "@/lib/ingest/extract";
+import { findDuplicateSource } from "@/lib/ingest/ingest.service";
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+export const runtime = "nodejs";
 
-function isAllowedExtension(filename: string): boolean {
-  return ALLOWED_EXTENSIONS.some((ext) => filename.toLowerCase().endsWith(ext));
-}
-
-function isAllowedMimeType(mimeType: string): boolean {
-  return (ALLOWED_MIME_TYPES as readonly string[]).includes(mimeType);
-}
-
-function getExtension(filename: string): string {
-  return filename.toLowerCase().slice(filename.lastIndexOf('.'));
-}
-
-// ─── POST /api/ingest ─────────────────────────────────────────────────────────
-
-export async function POST(request: Request): Promise<NextResponse> {
-  // 1. Auth check
+export async function POST(req: Request): Promise<NextResponse> {
   const session = await getSession();
-  if (!session.user) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  if (!session.userId) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
-  if (!['author', 'admin'].includes(session.user.role)) {
-    return NextResponse.json({ error: 'Insufficient role' }, { status: 403 });
-  }
-
-  const config = loadConfig();
-  const contentType = request.headers.get('content-type') ?? '';
-
-  // ── 2a. File upload (multipart/form-data) ────────────────────────────────
-  if (contentType.includes('multipart/form-data')) {
-    let formData: FormData;
-    try {
-      formData = await request.formData();
-    } catch {
-      return NextResponse.json({ errors: [{ field: 'body', message: 'Invalid form data' }] }, { status: 422 });
-    }
-
-    // Validate metadata fields
-    const parsed = fileIngestSchema.safeParse({
-      title: formData.get('title'),
-      sourceType: formData.get('sourceType'),
-      game: formData.get('game'),
-      area: formData.get('area'),
-      spoilerLevel: formData.get('spoilerLevel'),
-    });
-    if (!parsed.success) {
-      return NextResponse.json({ errors: formatZodErrors(parsed.error) }, { status: 422 });
-    }
-
-    const file = formData.get('file');
-    if (!(file instanceof File)) {
-      return NextResponse.json({ errors: [{ field: 'file', message: 'File is required' }] }, { status: 422 });
-    }
-
-    // Validate extension + MIME type
-    if (!isAllowedExtension(file.name)) {
-      return NextResponse.json(
-        { errors: [{ field: 'file', message: 'Only .md and .html files are accepted' }] },
-        { status: 422 },
-      );
-    }
-    if (!isAllowedMimeType(file.type) && file.type !== '') {
-      return NextResponse.json(
-        { errors: [{ field: 'file', message: 'Unsupported file MIME type' }] },
-        { status: 422 },
-      );
-    }
-
-    // Validate size
-    if (file.size > config.INGEST_MAX_FILE_BYTES) {
-      return NextResponse.json(
-        { errors: [{ field: 'file', message: `File exceeds maximum size of ${config.INGEST_MAX_FILE_BYTES} bytes` }] },
-        { status: 422 },
-      );
-    }
-
-    const rawText = await file.text();
-    const ext = getExtension(file.name);
-    const content = ext === '.html' ? htmlToMarkdown(rawText) : rawText;
-
-    if (!content.trim()) {
-      return NextResponse.json(
-        { errors: [{ field: 'file', message: 'No content extracted from file' }] },
-        { status: 422 },
-      );
-    }
-
-    return createSourceAndJob({
-      title: parsed.data.title,
-      sourceType: 'file',
-      sourceUri: file.name,
-      content,
-      createdBy: session.user.userId,
-      metadata: { game: parsed.data.game, area: parsed.data.area, spoilerLevel: parsed.data.spoilerLevel },
-      config,
-    });
+  if (session.role !== "admin" && session.role !== "author") {
+    return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 
-  // ── 2b. Text mode (application/json) ─────────────────────────────────────
-  if (contentType.includes('application/json')) {
-    let body: unknown;
-    try {
-      body = await request.json();
-    } catch {
-      return NextResponse.json({ errors: [{ field: 'body', message: 'Invalid JSON' }] }, { status: 422 });
-    }
-
-    const parsed = textIngestSchema.safeParse(body);
-    if (!parsed.success) {
-      return NextResponse.json({ errors: formatZodErrors(parsed.error) }, { status: 422 });
-    }
-
-    // Convert TipTap HTML to Markdown server-side
-    const content = htmlToMarkdown(parsed.data.content);
-    if (!content.trim()) {
-      return NextResponse.json(
-        { errors: [{ field: 'content', message: 'Content is empty after conversion' }] },
-        { status: 422 },
-      );
-    }
-
-    return createSourceAndJob({
-      title: parsed.data.title,
-      sourceType: 'text',
-      sourceUri: undefined,
-      content,
-      createdBy: session.user.userId,
-      metadata: { game: parsed.data.game, area: parsed.data.area, spoilerLevel: parsed.data.spoilerLevel },
-      config,
-    });
-  }
-
-  return NextResponse.json(
-    { errors: [{ field: 'body', message: 'Content-Type must be multipart/form-data or application/json' }] },
-    { status: 422 },
-  );
-}
-
-// ─── Core ingestion logic ─────────────────────────────────────────────────────
-
-interface CreateSourceAndJobParams {
-  title: string;
-  sourceType: 'file' | 'text';
-  sourceUri?: string;
-  content: string;
-  createdBy: string;
-  metadata: { game: string; area: string; spoilerLevel: string };
-  config: ReturnType<typeof loadConfig>;
-}
-
-async function createSourceAndJob(params: CreateSourceAndJobParams): Promise<NextResponse> {
-  const { title, sourceType, sourceUri, content, createdBy, metadata, config } = params;
-
-  await ensureDb();
-
-  // 3. Write RagSource
-  const source = await RagSource.create({
-    title,
-    sourceType,
-    sourceUri,
-    content,
-    createdBy: new mongoose.Types.ObjectId(createdBy),
-    metadata,
-    status: 'queued',
-  });
-
-  // 4. Pre-generate the MongoDB job ID so the worker can reference it
-  const jobMongoId = new mongoose.Types.ObjectId();
-
-  // 5. Enqueue BullMQ job
-  let bullJob;
+  let formData: FormData;
   try {
-    const queue = getIngestionQueue(config.REDIS_URL);
-    bullJob = await queue.add(
-      'ingest',
-      { sourceId: source._id.toString(), jobMongoId: jobMongoId.toString() },
-      {
-        attempts: config.INGEST_JOB_MAX_RETRIES,
-        backoff: { type: 'exponential', delay: config.INGEST_JOB_BACKOFF_MS },
-      },
-    );
+    formData = await req.formData();
   } catch {
-    // Rollback: mark source as failed so it's not orphaned
-    await RagSource.findByIdAndUpdate(source._id, { status: 'failed' });
-    return NextResponse.json({ error: 'Failed to enqueue ingestion job' }, { status: 500 });
+    return NextResponse.json({ error: "invalid_form_data" }, { status: 400 });
   }
 
-  // 6. Write RagIngestionJob with the pre-generated _id
-  await RagIngestionJob.create({
-    _id: jobMongoId,
-    sourceId: source._id,
-    queueJobUuid: bullJob.id ?? '',
-    status: 'queued',
-    processedChunks: 0,
+  // Validate metadata fields
+  const metaParsed = uploadMetaSchema.safeParse({
+    game: formData.get("game"),
+    guideType: formData.get("guideType"),
+    author: formData.get("author"),
+  });
+  if (!metaParsed.success) {
+    return NextResponse.json(
+      { error: "validation_error", details: metaParsed.error.issues },
+      { status: 422 }
+    );
+  }
+  const { game, guideType, author } = metaParsed.data;
+
+  const file = formData.get("file");
+  if (!(file instanceof File)) {
+    return NextResponse.json({ error: "missing_file" }, { status: 422 });
+  }
+
+  if (file.size === 0) {
+    return NextResponse.json({ error: "empty_file" }, { status: 422 });
+  }
+
+  if (file.size > config.INGEST_MAX_FILE_BYTES) {
+    return NextResponse.json(
+      { error: "file_too_large", maxBytes: config.INGEST_MAX_FILE_BYTES },
+      { status: 422 }
+    );
+  }
+
+  const ext = path.extname(file.name).toLowerCase();
+  if (!ALLOWED_EXTENSIONS.includes(ext as AllowedExtension)) {
+    return NextResponse.json(
+      { error: "unsupported_file_type", allowed: [...ALLOWED_EXTENSIONS] },
+      { status: 422 }
+    );
+  }
+
+  const bytes = await file.arrayBuffer();
+  const buffer = Buffer.from(bytes);
+
+  // MIME sniff — file-type returns undefined for plain text (md/html are text)
+  const detected = await fileTypeFromBuffer(buffer);
+  if (detected && !detected.mime.startsWith("text/")) {
+    return NextResponse.json(
+      { error: "unsupported_file_type", allowed: [...ALLOWED_EXTENSIONS] },
+      { status: 422 }
+    );
+  }
+
+  await connectDB();
+
+  // Duplicate check before insert
+  const existingSourceId = await findDuplicateSource(game, author);
+  if (existingSourceId) {
+    return NextResponse.json(
+      {
+        error: "duplicate_source",
+        hint: "A source for this game and author already exists.",
+        existingSourceId,
+      },
+      { status: 409 }
+    );
+  }
+
+  const ragSource = await RagSourceModel.create({
+    title: file.name.replace(/\.[^.]+$/, ""),
+    sourceType: "file",
+    status: "pending_review",
+    createdBy: session.userId,
+    metadata: {
+      game,
+      guideType,
+      author,
+      originalFilename: file.name,
+      sizeBytes: file.size,
+    },
   });
 
-  return NextResponse.json({ jobId: jobMongoId.toString() }, { status: 201 });
+  const sourceId = ragSource._id.toString();
+
+  const uploadDir = path.join(config.INGEST_UPLOAD_DIR, sourceId);
+  await mkdir(uploadDir, { recursive: true });
+  const filePath = path.join(uploadDir, file.name);
+  await writeFile(filePath, buffer);
+
+  const mimeType =
+    ext === ".html" || ext === ".htm" ? "text/html" : "text/plain";
+  const { text: content, title } = extractContent(
+    buffer.toString("utf-8"),
+    file.name,
+    mimeType
+  );
+
+  await RagSourceModel.findByIdAndUpdate(ragSource._id, {
+    sourceUri: filePath,
+    content,
+    title,
+  });
+
+  return NextResponse.json({ sourceId }, { status: 201 });
 }

@@ -1,55 +1,58 @@
-import { NextResponse } from 'next/server';
-import argon2 from 'argon2';
-import { User } from '@secondseat/db';
-import { ensureDb } from '@/lib/db';
-import { getSession } from '@/lib/session';
-import { registerSchema } from '@/schemas/auth';
-import { formatZodErrors } from '@/schemas/ingest';
+import { NextResponse } from "next/server";
+import { z } from "zod";
+import argon2 from "argon2";
+import { connectDB } from "@/lib/db";
+import { UserModel } from "@/models/user.model";
+import { getSession } from "@/lib/session";
 
-export async function POST(request: Request): Promise<NextResponse> {
+export const runtime = "nodejs";
+
+const registerSchema = z.object({
+  name: z.string().min(1, "Name is required"),
+  email: z.string().email("Invalid email address"),
+  password: z.string().min(12, "Password must be at least 12 characters"),
+});
+
+export async function POST(req: Request): Promise<NextResponse> {
   let body: unknown;
   try {
-    body = await request.json();
+    body = await req.json();
   } catch {
-    return NextResponse.json(
-      { error: 'validation_error', issues: [{ path: ['body'], message: 'Invalid JSON' }] },
-      { status: 422 },
-    );
+    return NextResponse.json({ error: "invalid_json" }, { status: 400 });
   }
 
   const parsed = registerSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
-      { error: 'validation_error', issues: formatZodErrors(parsed.error) },
-      { status: 422 },
+      { error: "validation_error", issues: parsed.error.issues },
+      { status: 422 }
     );
   }
 
-  await ensureDb();
+  const { name, email, password } = parsed.data;
 
-  const existing = await User.findOne({ email: parsed.data.email.toLowerCase() });
+  await connectDB();
+
+  const existing = await UserModel.findOne({ email: email.toLowerCase() });
   if (existing) {
-    return NextResponse.json({ error: 'email_already_registered' }, { status: 409 });
+    return NextResponse.json(
+      { error: "email_already_registered" },
+      { status: 409 }
+    );
   }
 
-  const passwordHash = await argon2.hash(parsed.data.password);
-
-  const user = await User.create({
-    name: parsed.data.name,
-    email: parsed.data.email.toLowerCase(),
-    passwordHash,
-    role: 'user',
-    profile: {
-      displayName: parsed.data.name,
-    },
+  const hash = await argon2.hash(password);
+  const user = await UserModel.create({
+    name: name.trim(),
+    email: email.toLowerCase(),
+    password: hash,
+    role: "user",
   });
 
   const session = await getSession();
-  session.user = {
-    userId: user._id.toString(),
-    role: 'user',
-  };
+  session.userId = user._id.toString();
+  session.role = "user";
   await session.save();
 
-  return NextResponse.json({ ok: true, role: 'user' }, { status: 201 });
+  return NextResponse.json({ ok: true, role: "user" }, { status: 201 });
 }

@@ -1,97 +1,90 @@
-import { NextResponse } from 'next/server';
-import mongoose from 'mongoose';
+import { NextResponse } from "next/server";
+import { connectDB } from "@/lib/db";
+import { RagSourceModel } from "@/models/rag-source.model";
+import { RagIngestionJobModel } from "@/models/rag-ingestion-job.model";
+import { getSession } from "@/lib/session";
+import { enqueueDeleteSourceJob } from "@/lib/queue/delete-queue";
 
-import { RagSource } from '@secondseat/db';
-import { ensureDb } from '@/lib/db';
-import { getSession } from '@/lib/session';
-import { getDeleteSourceQueue } from '@/lib/queue';
-import { loadConfig } from '@/lib/config';
+export const runtime = "nodejs";
 
-type Params = { params: Promise<{ sourceId: string }> };
-
-// ─── GET /api/ingest/sources/:sourceId ────────────────────────────────────────
-
-export async function GET(_request: Request, { params }: Params): Promise<NextResponse> {
+export async function GET(
+  _req: Request,
+  { params }: { params: Promise<{ sourceId: string }> }
+): Promise<NextResponse> {
   const session = await getSession();
-  if (!session.user) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  if (!session.userId) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
-  if (!['author', 'admin'].includes(session.user.role)) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  if (session.role !== "admin" && session.role !== "author") {
+    return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 
   const { sourceId } = await params;
-  if (!mongoose.isValidObjectId(sourceId)) {
-    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  await connectDB();
+
+  const source = await RagSourceModel.findById(sourceId)
+    .select("-sourceUri")
+    .lean();
+  if (!source) {
+    return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
 
-  await ensureDb();
-
-  const source = await RagSource.findById(sourceId)
-    .select('title status sourceType metadata createdBy createdAt')
+  const jobs = await RagIngestionJobModel.find({ sourceId })
+    .sort({ createdAt: -1 })
     .lean();
 
-  if (!source) {
-    return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  }
-
-  if (session.user.role !== 'admin' && source.createdBy.toString() !== session.user.userId) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
-
-  return NextResponse.json({
-    sourceId: source._id.toString(),
-    title: source.title,
-    status: source.status,
-    sourceType: source.sourceType,
-    metadata: source.metadata ?? null,
-    createdAt: (source.createdAt as Date).toISOString(),
-  });
+  return NextResponse.json({ source, jobs });
 }
 
-// ─── DELETE /api/ingest/sources/:sourceId ─────────────────────────────────────
-
-export async function DELETE(_request: Request, { params }: Params): Promise<NextResponse> {
+export async function DELETE(
+  _req: Request,
+  { params }: { params: Promise<{ sourceId: string }> }
+): Promise<NextResponse> {
   const session = await getSession();
-  if (!session.user) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  if (!session.userId) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
-  if (session.user.role !== 'admin') {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  if (session.role !== "admin" && session.role !== "author") {
+    return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 
   const { sourceId } = await params;
-  if (!mongoose.isValidObjectId(sourceId)) {
-    return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  }
+  await connectDB();
 
-  await ensureDb();
-
-  const source = await RagSource.findById(sourceId);
+  const source = await RagSourceModel.findById(sourceId);
   if (!source) {
-    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
 
-  // Idempotent — already in the delete pipeline
-  if (source.status === 'deleting') {
-    return NextResponse.json({ jobId: null }, { status: 202 });
-  }
-
-  if (source.status === 'processing') {
+  if (source.status === "processing") {
     return NextResponse.json(
-      { error: 'Source is currently processing — cannot delete' },
-      { status: 409 },
+      { error: "conflict", hint: "Wait for the job to finish before deleting." },
+      { status: 409 }
+    );
+  }
+
+  // Idempotent: already queued for deletion — return the existing job reference
+  if (source.status === "deleting") {
+    const existingJob = await RagIngestionJobModel.findOne({ sourceId })
+      .sort({ createdAt: -1 })
+      .lean();
+    return NextResponse.json(
+      { jobId: existingJob?._id.toString() ?? null },
+      { status: 202 }
     );
   }
 
   const previousStatus = source.status;
-  source.status = 'deleting';
-  source.previousStatus = previousStatus;
-  await source.save();
+  await RagSourceModel.findByIdAndUpdate(sourceId, {
+    status: "deleting",
+    previousStatus,
+  });
 
-  const config = loadConfig();
-  const queue = getDeleteSourceQueue(config.REDIS_URL);
-  const job = await queue.add('delete-source', { sourceId });
+  const jobId = await enqueueDeleteSourceJob(sourceId, previousStatus);
 
-  return NextResponse.json({ jobId: job.id ?? null }, { status: 202 });
+  console.log(
+    `[audit] source delete queued adminId=${session.userId} sourceId=${sourceId} jobId=${jobId} ts=${new Date().toISOString()}`
+  );
+
+  return NextResponse.json({ jobId }, { status: 202 });
 }

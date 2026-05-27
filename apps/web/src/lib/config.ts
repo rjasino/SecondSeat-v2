@@ -1,25 +1,38 @@
-import { z } from 'zod';
+import { existsSync, accessSync, constants } from "fs";
 
-const ConfigSchema = z.object({
-  NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
-  WEB_PORT: z.coerce.number().int().positive(),
-  MONGODB_URI: z.string().url('MONGODB_URI must be a valid URL'),
-  REDIS_URL: z.string().url('REDIS_URL must be a valid URL'),
-  SESSION_SECRET: z.string().min(32, 'SESSION_SECRET must be at least 32 characters'),
-  INGEST_MAX_FILE_BYTES: z.coerce.number().int().positive().default(5_242_880),
-  INGEST_JOB_MAX_RETRIES: z.coerce.number().int().positive().default(3),
-  INGEST_JOB_BACKOFF_MS: z.coerce.number().int().positive().default(5_000),
-});
-
-export type Config = z.infer<typeof ConfigSchema>;
-
-export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
-  const parsed = ConfigSchema.safeParse(env);
-  if (!parsed.success) {
-    const issues = parsed.error.issues
-      .map((i) => `${i.path.join('.')}: ${i.message}`)
-      .join('; ');
-    throw new Error(`Invalid web config: ${issues}`);
-  }
-  return parsed.data;
+function requireEnv(key: string): string {
+  const val = process.env[key];
+  if (!val) throw new Error(`Required env var missing: ${key}`);
+  return val;
 }
+
+const INGEST_UPLOAD_DIR = requireEnv("INGEST_UPLOAD_DIR");
+
+if (!existsSync(INGEST_UPLOAD_DIR)) {
+  throw new Error(`INGEST_UPLOAD_DIR not found: ${INGEST_UPLOAD_DIR}`);
+}
+try {
+  accessSync(INGEST_UPLOAD_DIR, constants.W_OK);
+} catch {
+  throw new Error(`INGEST_UPLOAD_DIR not writable: ${INGEST_UPLOAD_DIR}`);
+}
+
+export const config = {
+  MONGO_URL: requireEnv("MONGO_URL"),
+  REDIS_URL: requireEnv("REDIS_URL"),
+  SESSION_PASSWORD: requireEnv("SESSION_PASSWORD"),
+  INGEST_UPLOAD_DIR,
+  INGEST_MAX_FILE_BYTES: parseInt(
+    process.env["INGEST_MAX_FILE_BYTES"] ?? "5242880",
+    10
+  ),
+  INGEST_QUEUE_NAME: process.env["INGEST_QUEUE_NAME"] ?? "ingestion",
+  DELETE_QUEUE_NAME: process.env["DELETE_QUEUE_NAME"] ?? "delete-source",
+  DELETE_QUEUE_ATTEMPTS: parseInt(
+    process.env["DELETE_QUEUE_ATTEMPTS"] ?? "3",
+    10
+  ),
+  CHROMA_URL: process.env["CHROMA_URL"] ?? "http://localhost:8000",
+  CHROMA_COLLECTION: process.env["CHROMA_COLLECTION"] ?? "secondseat_rag",
+  GAME_ID: process.env["GAME_ID"] ?? "default",
+} as const;

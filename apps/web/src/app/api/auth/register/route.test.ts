@@ -1,161 +1,128 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// ─── Mocks ────────────────────────────────────────────────────────────────────
-
-vi.mock('@/lib/session', () => ({
-  getSession: vi.fn(),
+vi.mock("@/lib/db", () => ({
+  connectDB: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock('@/lib/db', () => ({
-  ensureDb: vi.fn().mockResolvedValue(undefined),
-}));
-
-vi.mock('@secondseat/db', () => ({
-  User: {
+vi.mock("@/models/user.model", () => ({
+  UserModel: {
     findOne: vi.fn(),
     create: vi.fn(),
   },
 }));
 
-vi.mock('argon2', () => ({
+vi.mock("@/lib/session", () => ({
+  getSession: vi.fn(),
+}));
+
+vi.mock("argon2", () => ({
   default: {
-    hash: vi.fn().mockResolvedValue('$argon2id$hashed'),
+    hash: vi.fn().mockResolvedValue("argon2-hashed-password"),
   },
 }));
 
-// ─── Imports (after mocks) ────────────────────────────────────────────────────
+import { POST } from "./route";
+import { UserModel } from "@/models/user.model";
+import { getSession } from "@/lib/session";
 
-import { POST } from './route';
-import { getSession } from '@/lib/session';
-import { User } from '@secondseat/db';
+const mockUserId = { toString: () => "user-123" };
 
-const mockGetSession = vi.mocked(getSession);
-const mockFindOne = vi.mocked(User.findOne);
-const mockCreate = vi.mocked(User.create);
+const mockSession = {
+  userId: undefined as string | undefined,
+  role: undefined as string | undefined,
+  save: vi.fn().mockResolvedValue(undefined),
+};
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+const validBody = {
+  name: "Test Player",
+  email: "player@example.com",
+  password: "supersecret1234",
+};
 
-function makeRequest(body: unknown) {
-  return new Request('http://localhost/api/auth/register', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+function makeRequest(body: unknown): Request {
+  return new Request("http://localhost/api/auth/register", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
 }
 
-const validBody = {
-  name: 'Player One',
-  email: 'player@example.com',
-  password: 'secretpassword123',
-};
-
-function makeCreatedDoc() {
-  return {
-    _id: { toString: () => '507f1f77bcf86cd799439011' },
-    email: 'player@example.com',
-    name: 'Player One',
-    role: 'user' as const,
-  };
-}
-
-function makeSession() {
-  return { user: undefined as unknown, save: vi.fn() };
-}
-
 beforeEach(() => {
   vi.clearAllMocks();
-  mockFindOne.mockResolvedValue(null);
-  mockCreate.mockResolvedValue(makeCreatedDoc() as never);
-  mockGetSession.mockResolvedValue(makeSession() as never);
+  vi.mocked(getSession).mockResolvedValue(mockSession as never);
+  vi.mocked(UserModel.findOne).mockResolvedValue(null);
+  vi.mocked(UserModel.create).mockResolvedValue({ _id: mockUserId } as never);
+  mockSession.userId = undefined;
+  mockSession.role = undefined;
+  mockSession.save.mockResolvedValue(undefined);
 });
 
-// ─── Tests ────────────────────────────────────────────────────────────────────
-
-describe('POST /api/auth/register', () => {
-  it('returns 201 { ok: true, role: "user" } on valid registration', async () => {
+describe("POST /api/auth/register", () => {
+  it("returns 201, sets role=user in session, and saves cookie on success", async () => {
     const res = await POST(makeRequest(validBody));
-    const body = await res.json();
-
     expect(res.status).toBe(201);
-    expect(body).toEqual({ ok: true, role: 'user' });
+    const body = (await res.json()) as { ok: boolean; role: string };
+    expect(body.ok).toBe(true);
+    expect(body.role).toBe("user");
+    expect(mockSession.userId).toBe("user-123");
+    expect(mockSession.role).toBe("user");
+    expect(mockSession.save).toHaveBeenCalledOnce();
   });
 
-  it('creates user with role "user" and synced profile.displayName', async () => {
-    await POST(makeRequest(validBody));
-
-    expect(mockCreate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        role: 'user',
-        name: 'Player One',
-        profile: expect.objectContaining({ displayName: 'Player One' }),
-      }),
-    );
-  });
-
-  it('writes slim session { userId, role } on success', async () => {
-    const session = makeSession();
-    mockGetSession.mockResolvedValue(session as never);
-
-    await POST(makeRequest(validBody));
-
-    expect(session.save).toHaveBeenCalledOnce();
-    expect(session.user).toEqual({ userId: '507f1f77bcf86cd799439011', role: 'user' });
-  });
-
-  it('strips role field from request body — always creates role: "user"', async () => {
-    await POST(makeRequest({ ...validBody, role: 'admin' }));
-
-    expect(mockCreate).toHaveBeenCalledWith(
-      expect.objectContaining({ role: 'user' }),
-    );
-  });
-
-  it('returns 409 { error: "email_already_registered" } when email is taken', async () => {
-    mockFindOne.mockResolvedValue(makeCreatedDoc() as never);
-
+  it("returns 409 when the email is already registered", async () => {
+    vi.mocked(UserModel.findOne).mockResolvedValue({ _id: "existing" } as never);
     const res = await POST(makeRequest(validBody));
-    const body = await res.json();
-
     expect(res.status).toBe(409);
-    expect(body).toEqual({ error: 'email_already_registered' });
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toBe("email_already_registered");
   });
 
-  it('returns 422 { error: "validation_error" } when password is shorter than 12 chars', async () => {
-    const res = await POST(makeRequest({ ...validBody, password: 'short' }));
-    const body = await res.json();
-
+  it("returns 422 when password is shorter than 12 characters", async () => {
+    const res = await POST(makeRequest({ ...validBody, password: "tooshort" }));
     expect(res.status).toBe(422);
-    expect(body.error).toBe('validation_error');
-    expect(Array.isArray(body.issues)).toBe(true);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toBe("validation_error");
   });
 
-  it('does not require confirmPassword field', async () => {
-    const res = await POST(makeRequest(validBody));
+  it("returns 422 when email is not a valid address", async () => {
+    const res = await POST(makeRequest({ ...validBody, email: "not-an-email" }));
+    expect(res.status).toBe(422);
+  });
 
+  it("returns 422 when name is an empty string", async () => {
+    const res = await POST(makeRequest({ ...validBody, name: "" }));
+    expect(res.status).toBe(422);
+  });
+
+  it("strips any role field from the payload — created user is always role=user", async () => {
+    const res = await POST(makeRequest({ ...validBody, role: "admin" }));
     expect(res.status).toBe(201);
-  });
-
-  it('returns 422 when email is malformed', async () => {
-    const res = await POST(makeRequest({ ...validBody, email: 'bad-email' }));
-
-    expect(res.status).toBe(422);
-  });
-
-  it('returns 422 when name is empty', async () => {
-    const res = await POST(makeRequest({ ...validBody, name: '' }));
-
-    expect(res.status).toBe(422);
-  });
-
-  it('returns 422 when body is not valid JSON', async () => {
-    const res = await POST(
-      new Request('http://localhost/api/auth/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: 'not json{',
-      }),
+    expect(UserModel.create).toHaveBeenCalledWith(
+      expect.objectContaining({ role: "user" })
     );
+  });
 
-    expect(res.status).toBe(422);
+  it("lowercases the email before duplicate check and before storing", async () => {
+    await POST(makeRequest({ ...validBody, email: "PLAYER@EXAMPLE.COM" }));
+    expect(UserModel.findOne).toHaveBeenCalledWith({ email: "player@example.com" });
+    expect(UserModel.create).toHaveBeenCalledWith(
+      expect.objectContaining({ email: "player@example.com" })
+    );
+  });
+
+  it("does not create a user when duplicate check finds an existing email", async () => {
+    vi.mocked(UserModel.findOne).mockResolvedValue({ _id: "existing" } as never);
+    await POST(makeRequest(validBody));
+    expect(UserModel.create).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 for a non-JSON request body", async () => {
+    const req = new Request("http://localhost/api/auth/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "not-json{{{",
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(400);
   });
 });

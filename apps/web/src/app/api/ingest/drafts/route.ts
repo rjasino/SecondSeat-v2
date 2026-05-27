@@ -1,61 +1,73 @@
-import { NextResponse } from 'next/server';
-import { z } from 'zod';
+import { NextResponse } from "next/server";
+import { connectDB } from "@/lib/db";
+import { RagSourceModel } from "@/models/rag-source.model";
+import { getSession } from "@/lib/session";
+import { createDraftSchema } from "@/lib/ingest/schemas";
+import { findDuplicateSource } from "@/lib/ingest/ingest.service";
 
-import { RagSource } from '@secondseat/db';
-import { ensureDb } from '@/lib/db';
-import { getSession } from '@/lib/session';
-import { htmlToMarkdown } from '@/lib/turndown';
+export const runtime = "nodejs";
 
-// ─── Schema ───────────────────────────────────────────────────────────────────
-
-const createDraftSchema = z.object({
-  title: z.string().min(1, 'Title is required'),
-  content: z.string().min(1, 'Content is required'),
-  game: z.string().min(1, 'Game is required'),
-  area: z.string().min(1, 'Area is required'),
-  spoilerLevel: z.enum(['none', 'low', 'medium', 'high']).default('low'),
-});
-
-// ─── POST /api/ingest/drafts ──────────────────────────────────────────────────
-
-export async function POST(request: Request): Promise<NextResponse> {
+export async function POST(req: Request): Promise<NextResponse> {
   const session = await getSession();
-  if (!session.user) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  if (!session.userId) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
-  if (!['author', 'admin'].includes(session.user.role)) {
-    return NextResponse.json({ error: 'Insufficient role' }, { status: 403 });
+  if (session.role !== "admin" && session.role !== "author") {
+    return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 
   let body: unknown;
   try {
-    body = await request.json();
+    body = await req.json();
   } catch {
-    return NextResponse.json({ error: 'Invalid JSON' }, { status: 422 });
+    return NextResponse.json({ error: "invalid_body" }, { status: 400 });
   }
 
   const parsed = createDraftSchema.safeParse(body);
   if (!parsed.success) {
-    const errors = parsed.error.issues.map((i) => ({
-      field: String(i.path[0] ?? 'body'),
-      message: i.message,
-    }));
-    return NextResponse.json({ errors }, { status: 422 });
+    return NextResponse.json(
+      { error: "validation_error", details: parsed.error.issues },
+      { status: 422 }
+    );
   }
 
-  const { title, content, game, area, spoilerLevel } = parsed.data;
-  const markdown = content.startsWith('<') ? htmlToMarkdown(content) : content;
+  const { title, game, guideType, author, content } = parsed.data;
 
-  await ensureDb();
+  await connectDB();
 
-  const source = await RagSource.create({
+  const existingSourceId = await findDuplicateSource(game, author);
+  if (existingSourceId) {
+    return NextResponse.json(
+      {
+        error: "duplicate_source",
+        hint: "A source for this game and author already exists.",
+        existingSourceId,
+      },
+      { status: 409 }
+    );
+  }
+
+  const source = await RagSourceModel.create({
     title,
-    content: markdown,
-    sourceType: 'text',
-    createdBy: session.user.userId,
-    metadata: { game, area, spoilerLevel },
-    status: 'draft',
+    sourceType: "text",
+    status: "draft",
+    content: content ?? "",
+    createdBy: session.userId,
+    metadata: {
+      game,
+      guideType,
+      author,
+      charCount: content?.length ?? 0,
+      wordCount: content ? countWords(content) : 0,
+    },
   });
 
-  return NextResponse.json({ sourceId: source._id.toString() }, { status: 201 });
+  return NextResponse.json(
+    { sourceId: source._id.toString(), status: "draft" },
+    { status: 201 }
+  );
+}
+
+function countWords(text: string): number {
+  return text.trim().split(/\s+/).filter(Boolean).length;
 }

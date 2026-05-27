@@ -3,26 +3,33 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "main": "dist/index.js",
   "scripts": {
-    "dev": "tsx watch --env-file=.env src/index.ts",
-    "build": "tsc",
-    "start": "node --env-file=.env dist/index.js",
-    "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "dev": "tsx watch --env-file=.env.local src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node --env-file=.env.local dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
-    "@secondseat/db": "*",
-    "@secondseat/embedding": "*",
-    "express": "^4.21.1",
-    "express-rate-limit": "^7.4.1",
+    "express": "^4.21.0",
     "helmet": "^8.0.0",
-    "zod": "^3.23.8"
+    "express-rate-limit": "^7.4.0",
+    "mongoose": "^8.8.0",
+    "chromadb": "^1.9.4",
+    "@anthropic-ai/sdk": "^0.32.0",
+    "openai": "^4.67.0",
+    "zod": "^3.23.8",
+    "@secondseat/db": "*",
+    "@secondseat/embedding": "*"
   },
   "devDependencies": {
-    "@types/express": "^5.0.0",
-    "@types/node": "^22.9.0",
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.14.0",
     "@types/supertest": "^6.0.2",
     "supertest": "^7.0.0",
-    "tsx": "^4.19.2"
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.0",
+    "vitest": "^2.0.0"
   }
 }

@@ -1,10 +1,19 @@
-import { createApp } from './app.js';
-import { loadConfig } from './config/index.js';
+import { createApp } from "./app.js";
+import { connectDB } from "./lib/db.js";
+import { warmupEmbeddingModel } from "@secondseat/embedding";
+import { inferenceConfig } from "./config/config.js";
 
-const config = loadConfig();
-const app = createApp();
+async function bootstrap() {
+  await connectDB();
+  await warmupEmbeddingModel();
 
-app.listen(config.INFERENCE_PORT, () => {
-  // eslint-disable-next-line no-console
-  console.log(`[inference] listening on :${config.INFERENCE_PORT}`);
+  const app = createApp();
+  app.listen(inferenceConfig.PORT, () => {
+    console.log(`[inference] listening on http://localhost:${inferenceConfig.PORT}`);
+  });
+}
+
+bootstrap().catch((err) => {
+  console.error("[inference] Fatal startup error:", err);
+  process.exit(1);
 });
