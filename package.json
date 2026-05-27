@@ -11,15 +11,17 @@
     "dev:web": "npm run dev --workspace=@secondseat/web",
     "dev:inference": "npm run dev --workspace=@secondseat/inference",
     "dev:workers": "npm run dev --workspace=@secondseat/workers",
-    "seed:privileged": "tsx --env-file=packages/db/.env packages/db/scripts/seed-privileged-users.ts",
+    "seed:privileged": "npm run seed:privileged --workspace=@secondseat/web",
     "build": "npm run build --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present"
   },
   "devDependencies": {
     "typescript": "^5.6.3",
-    "vitest": "^2.1.5",
-    "@vitest/coverage-v8": "^2.1.5"
+    "@vitejs/plugin-react": "^6.0.2",
+    "vite": "^8.0.0",
+    "vitest": "^4.1.7",
+    "@vitest/coverage-v8": "^4.1.7"
   },
   "engines": {
     "node": ">=20.0.0",
