@@ -6,101 +6,125 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 SecondSeat is a second-screen AI companion for gamers. The product wedge: deliver **1–3 line, spoiler-safe micro-hints** via voice or text without breaking gameplay flow. It is _not_ a walkthrough engine, not a chatbot, not a solver — it is a restrained guide.
 
-Built for a **5-week competition sprint** (SG Tech Week product challenge, submission deadline **2026-05-31**). Solo project, spare-time only, no real customer data. LLM provider: Anthropic Claude (production) + OpenCode Zen (development) — see [docs/decisions.md](docs/decisions.md).
+Built for a **5-week competition sprint** (SG Tech Week product challenge, submission deadline **2026-06-01**). Solo project, spare-time only, no real customer data. LLM provider: Anthropic Claude (development) + OpenCode Zen (production) — see [docs/decisions.md](docs/decisions.md).
 
 ---
 
-## 🚦 Mandatory Workflow — Read This First
+## 🚦 Workflow — Read This First
 
-Every non-trivial request (new feature, bug fix, refactor, schema change) follows the **5-phase gated workflow** below. Do NOT skip phases. Do NOT bundle them. Each phase ends at a hard gate that requires an explicit human signal before the next phase begins.
+Every task is routed through one of three lanes based on risk and scope. **Choose the lane first, then follow only its required steps.** The slash commands still exist; their applicability is now lane-dependent.
+
+### Lane routing table
+
+| Lane         | Use when                                                                                       | Required steps                                                                                    |
+| :----------- | :--------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------ |
+| **Fast**     | Small bug fix, localized refactor, single-component change, no schema/API/cross-service impact | `/task` classify → implement → targeted tests → summary                                           |
+| **Spec**     | New feature, API change, multi-file work, medium or high-risk change                           | `/task` clarify → `/spec` → **spec approval** → implement → risk-based tests                      |
+| **Decision** | Architectural or irreversible choice (schema, service contract, workflow rule)                 | `/task` clarify → `/spec` → `/log` → **spec approval + gate file** → implement → risk-based tests |
 
 ```
-  ┌──────────┐   clarify   ┌──────────┐   approve   ┌────────┐   proceed   ┌─────────────┐   acceptance   ┌───────┐   all clear   ┌─────────┐
-  │  /task   │ ──────────► │  /spec   │ ──────────► │  /log  │ ──────────► │  /implement │ ─────────────► │ /test │ ────────────► │ /commit │
-  └──────────┘             └──────────┘             └────────┘             └─────────────┘                └───────┘               └─────────┘
-   Clarify Q&A              Spec doc                 CHANGELOG +              Backend →                     E2E (automated)         Commit
-   No code                  No code                  decisions.md             Frontend →                    + manual
-                            No code                  No code                  Unit tests +                  integration &
-                                                                              integration tests              acceptance
+Fast lane:
+  ┌──────────┐   classify   ┌─────────────┐   targeted tests   ┌─────────┐
+  │  /task   │ ───────────► │  /implement │ ─────────────────► │ /commit │
+  └──────────┘              └─────────────┘                    └─────────┘
+
+Spec lane:
+  ┌──────────┐   clarify   ┌──────────┐   approved   ┌─────────────┐   risk-based tests   ┌───────┐   all clear   ┌─────────┐
+  │  /task   │ ──────────► │  /spec   │ ───────────► │  /implement │ ───────────────────► │ /test │ ────────────► │ /commit │
+  └──────────┘             └──────────┘              └─────────────┘                      └───────┘               └─────────┘
+
+Decision lane:
+  ┌──────────┐   clarify   ┌──────────┐   approved   ┌────────┐   proceed   ┌─────────────┐   risk-based tests   ┌───────┐   all clear   ┌─────────┐
+  │  /task   │ ──────────► │  /spec   │ ───────────► │  /log  │ ──────────► │  /implement │ ───────────────────► │ /test │ ────────────► │ /commit │
+  └──────────┘             └──────────┘              └────────┘             └─────────────┘                      └───────┘               └─────────┘
 ```
 
-### Phase 1 — Clarify (`/task`)
+### Fast lane
 
-- **Trigger:** user asks for a feature/fix/refactor without invoking a slash command, OR types `/task`.
-- **Action:** ask the clarifying questions from `.claude/commands/task.md` (behavior, edge cases, dependencies, constraints, existing patterns). Summarize understanding. Ask: _"Is this correct? Should I proceed to write the spec?"_
-- **Gate:** user must say yes / approve / "proceed to spec". No spec, no code yet.
+- **Trigger:** task is small, localized, and self-contained — no schema changes, no new API endpoints, no cross-service impact.
+- **Action:** state the lane, briefly summarize the change, ask "Ready to implement?" then implement with targeted tests.
+- **No `/spec`, no `/log` required.** Write a concise end-of-task summary instead.
+- **If scope expands mid-implementation**, STOP and re-classify to the spec or decision lane before continuing.
 
-### Phase 2 — Spec (`/spec`)
+### Spec lane
 
-- **Trigger:** user confirms clarifications.
-- **Action:** write the spec to `docs/specs/SPEC-<slug>.md` using the **exact template in `.claude/commands/spec.md`** (Feature/Goal/Stakeholders/User Stories with Given-When-Then/Data Requirements/Mermaid Flow Diagram/API Contract/Edge Cases/Out of Scope/Open Questions/Dependencies). Populate **Open Questions** with anything still ambiguous or assumed.
-- **Output exactly:** `Spec saved to docs/specs/SPEC-<slug>.md. Please review and reply 'approved' to proceed.`
-- **Gate:** user must reply `approved`. No logs, no code yet.
+- **`/task`:** ask clarifying questions (behavior, edge cases, dependencies, constraints, existing patterns). Summarize and ask: _"Is this correct? Should I proceed to write the spec?"_
+- **`/spec`:** write spec to `docs/specs/<YYYY-MM-DD>-SPEC-<slug>.md`. Output: `Spec saved to docs/specs/SPEC-<slug>.md. Please review and reply 'approved' to proceed.`
+- **Gate:** user replies `approved` → move to `/implement`. One gate only. No `/log` required unless the spec surfaces a notable product or architecture decision.
+- **`/implement`:** cut branch, implement, risk-based tests. Output: `Ready for acceptance testing.`
+- **`/test`:** risk-based (see Testing section below).
 
-### Phase 3 — Log (`/log`)
+### Decision lane
 
-- **Trigger:** user approves the spec.
-- **Action:** append to `docs/CHANGELOG.md` (under `## Unreleased` — the **What**) and `docs/decisions.md` (Date/Context/Decision/Alternatives/Consequences — the **Why**).
-- **Output exactly:** `Logs written to docs/CHANGELOG.md and docs/decisions.md. Reply 'proceed' to begin implementation.`
-- **Gate:** user must reply `proceed`. No implementation yet.
+Same as spec lane, with `/log` inserted between `/spec` approval and `/implement`:
 
-### Phase 4 — Implement (`/implement`)
+- **`/log`:** append to `docs/CHANGELOG.md` and `docs/decisions.md`, write `.claude/.workflow-gate`. Output: `Logs written to docs/CHANGELOG.md and docs/decisions.md. Gate opened. Reply 'proceed' to begin implementation.`
+- **Gate:** user replies `proceed` → `/implement`.
 
-- **Trigger:** user replies `proceed`.
-- **First action:** cut a fresh working branch from `main` named `<normalized git config user.name>/<task_word>` for the task being implemented. This is the agent working branch; the human creates the PR separately.
-- **Order:** Backend → Frontend → Unit tests → automated integration tests. Follow `.claude/rules/coding.md`, `.claude/rules/security.md`, `.claude/rules/testing.md`.
-- **Stay in scope.** If something requires a scope change, STOP and flag it — do not silently expand.
-- **End-of-phase output:** files changed, tests written, deviations from spec (or "none"), then signal: `Ready for acceptance testing.`
-- **Gate:** user must confirm before moving to Phase 5.
+### When to skip the workflow entirely
 
-### Phase 5 — Test (`/test`)
-
-- **Trigger:** user confirms Phase 4 is done.
-- **Action:** run automated E2E tests where they exist; perform manual integration and acceptance testing against the running app.
-- **End-of-phase output:** what was tested, pass/fail status, then signal: `All acceptance checks passed. Ready to commit.`
-- **Gate:** user must confirm before running `/commit`. This is the final sign-off that the task is done.
-
-### When to skip the workflow
-
-The workflow is mandatory for anything that touches behavior, schema, contracts, or UI. Skip it only for:
+Skip all lanes (go straight to the change) only for:
 
 - Pure questions ("what does X do?", "where is Y defined?")
-- One-line typo fixes in docs/comments
+- One-line typo fixes in docs or comments
 - Read-only exploration
 
-If you are unsure whether something qualifies as trivial, **default to running `/task`**.
+If you are unsure which lane applies, **default to spec lane**.
 
-### Signal vocabulary (what the gates listen for)
+### Signal vocabulary
 
-| Gate               | User says one of…                                     |
-| :----------------- | :---------------------------------------------------- |
-| After `/task`      | "yes", "correct", "proceed to spec", "write the spec" |
-| After `/spec`      | "approved", "approve", "lgtm"                         |
-| After `/log`       | "proceed", "go", "implement"                          |
-| After `/implement` | any confirmation that implementation is done          |
-| After `/test`      | any confirmation that acceptance checks passed        |
+| Gate                               | User says one of…                                     |
+| :--------------------------------- | :---------------------------------------------------- |
+| After `/task` (fast lane)          | "yes", "ready", "go", "implement"                     |
+| After `/task` (spec/decision lane) | "yes", "correct", "proceed to spec", "write the spec" |
+| After `/spec`                      | "approved", "approve", "lgtm"                         |
+| After `/log`                       | "proceed", "go", "implement"                          |
+| After `/implement`                 | any confirmation that implementation is done          |
+| After `/test`                      | any confirmation that acceptance checks passed        |
 
-Anything ambiguous → ask, don't assume. A wrong-phase action (e.g. coding before the log gate) is worse than a clarifying question.
+### Testing (risk-based)
+
+Default for all lanes: **targeted automated tests** (unit and/or integration) for the changed code.
+
+Require manual acceptance and/or E2E only when:
+
+- The change affects a player-facing UI flow
+- The change crosses service boundaries (web ↔ inference ↔ workers)
+- The affected code path already has E2E coverage that would regress
+
+If no E2E coverage exists for a new flow, note it explicitly but do not block the commit on it.
 
 ### Mechanical enforcement (the hook)
 
-A `PreToolUse` hook (`.claude/hooks/check-workflow-gate.cjs`, registered in `.claude/settings.json`) **physically blocks** `Write`/`Edit`/`NotebookEdit` under `apps/**` unless `.claude/.workflow-gate` contains `ready-to-implement`. The file is gitignored and managed by the workflow itself:
+A `PreToolUse` hook (`.claude/hooks/check-workflow-gate.cjs`, registered in `.claude/settings.json`) **physically blocks** `Write`/`Edit`/`NotebookEdit` on the two highest-risk surfaces unless `.claude/.workflow-gate` contains `ready-to-implement`:
 
-- `/log` writes the gate at the end of Phase 3.
-- `/implement` deletes the gate when it finishes, so the next task re-enters Phase 1.
+- `apps/inference/src/` — LLM/RAG prompt policy (trust-critical path)
+- `packages/db/src/` — Mongoose schema changes
+
+All other paths (including other `apps/**`) are unblocked and do not require the gate. Fast-lane tasks on web components and workers proceed without any gate write.
+
+The gate file is managed by the workflow:
+
+- `/log` writes it (decision lane).
+- `/implement` deletes it when finished, so the next task re-enters the routing step cleanly.
 - Edits to `docs/`, `.claude/`, and root config files are never blocked.
 
-If the hook blocks you and the change is genuinely trivial (one-line fix, no spec needed), you can unblock manually for that one edit: `Set-Content .claude/.workflow-gate ready-to-implement` (PowerShell) — but log the deviation in the next `/log` run.
+To unblock manually for a genuine one-off: `Set-Content .claude/.workflow-gate ready-to-implement` (PowerShell) — note the deviation in the next `/log` run.
 
 ---
 
 ## Repository State
 
-Monorepo with three apps scaffolded under `apps/` (web, inference, workers). Ingestion pipeline (Epics I-A/I-B/I-C) is implemented. Inference stream is not yet started.
+Monorepo with three apps under `apps/` (web, inference, workers) and shared libraries under `packages/`. Ingestion pipeline is implemented. Inference stream is not yet started.
 
+- `apps/web/` — Next.js player-facing UI
+- `apps/inference/` — Express LLM/RAG hot path (prompt policy, streaming, spoiler enforcement)
+- `apps/workers/` — BullMQ ingestion and embedding workers
+- `packages/db/` — Mongoose schemas and shared DB client (protected path — decision lane required)
+- `packages/**/` — shared TypeScript types, utilities, constants, embedding functions, etc.
 - `docs/` — source of truth for product and architecture decisions. Read before guessing.
 - `docs/specs/` — approved and draft spec documents (one per feature/task).
-- `.claude/commands/` — `/task`, `/spec`, `/log`, `/implement`, `/test`, `/commit`, `/bug-triage` slash commands. The first five drive the 5-phase workflow; `/bug-triage` handles ad-hoc bug investigation; `/commit` writes clean conventional-commit messages.
+- `.claude/commands/` — `/task`, `/spec`, `/log`, `/implement`, `/test`, `/commit`, `/bug-triage` slash commands. The first three drive the 3-lane workflow routing; `/implement` and `/test` close each lane; `/bug-triage` handles ad-hoc investigation; `/commit` writes conventional-commit messages.
 - `.claude/rules/` — coding, security, and testing standards.
 
 ## Source-of-Truth Documents
@@ -115,7 +139,7 @@ Monorepo with three apps scaffolded under `apps/` (web, inference, workers). Ing
 | What has shipped                                                       | [docs/CHANGELOG.md](docs/CHANGELOG.md)                                    |
 | Per-feature specs                                                      | [docs/specs/](docs/specs/)                                                |
 
-**Watch out:** [docs/data_model.md](docs/data_model.md) is written in Laravel-style SQL migration syntax, but the SDD specifies MongoDB + Mongoose. Treat it as a logical ERD — translate to Mongoose schemas when implementing.
+[docs/data_model.md](docs/data_model.md) uses MongoDB collection/schema notation aligned to Mongoose. Use it directly when implementing models under `packages/db/src/`.
 
 ## Architecture
 
