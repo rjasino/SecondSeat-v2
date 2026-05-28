@@ -69,7 +69,7 @@ describe("OpenCodeZenAdapter.streamGenerate", () => {
     expect(body).toMatchObject({
       model: "opencode/claude-haiku-4-5",
       instructions: "system policy",
-      input: "where do I go?",
+      input: [{ role: "user", content: "where do I go?" }],
       max_output_tokens: 256,
       stream: true,
     });
