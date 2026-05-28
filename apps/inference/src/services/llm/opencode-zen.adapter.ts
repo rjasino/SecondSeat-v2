@@ -24,18 +24,25 @@ export class OpenCodeZenAdapter implements LlmAdapter {
   async *streamGenerate(
     systemPrompt: string,
     userPrompt: string,
-    opts?: LlmOptions
+    opts?: LlmOptions,
   ): AsyncIterable<string> {
     try {
+      console.log("OpenCode Zen streamGenerate called with", {
+        systemPrompt,
+        userPrompt,
+      });
       const stream = await this.client.responses.create(
         {
           model: inferenceConfig.OPENCODE_ZEN_MODEL,
           instructions: systemPrompt,
-          input: userPrompt,
+          // OpenCode Zen's proxy maps Responses → Anthropic Messages. A bare
+          // string `input` drops the user message, so pass the structured
+          // input-items form to guarantee a user turn reaches Anthropic.
+          input: [{ role: "user", content: userPrompt }],
           max_output_tokens: 256, // 3 lines never need more than 256 tokens
           stream: true,
         },
-        { signal: opts?.abortSignal }
+        { signal: opts?.abortSignal },
       );
 
       for await (const event of stream) {

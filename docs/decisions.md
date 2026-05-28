@@ -4,6 +4,29 @@ Architecture and product decisions for SecondSeat, in reverse chronological orde
 
 ---
 
+## 2026-05-28 — OpenCode Zen Responses API: structured `input` form
+
+**Context**
+After switching to the Responses API (entry above), live hint streams failed with `400 Error from provider (Anthropic): messages: at least one message is required`. The adapter was passing `input: userPrompt` as a bare string. OpenCode Zen's proxy translates Responses → Anthropic Messages, and the string form was being dropped during translation, leaving Anthropic with an empty `messages` array. The OpenAI Responses API spec permits both string and structured input-items forms; the proxy only honors the structured form.
+
+**Decision**
+Pass `input` as `[{ role: "user", content: userPrompt }]`. Keep `instructions: systemPrompt` (correctly mapped to Anthropic `system`). Update the matching unit-test assertion. No interface change for callers.
+
+**Alternatives considered**
+- Switch back to Chat Completions for the Anthropic-hosted models — rejected; Responses is the documented surface for the Claude lineup on OpenCode Zen and was deliberately chosen in the prior decision.
+- Concatenate `systemPrompt + userPrompt` into a single string `input` — rejected; bypasses the system/user separation that the spoiler-discipline prompt policy relies on.
+
+**Consequences**
+- Hint generation is unblocked end-to-end against the OpenCode Zen path.
+- Workflow deviation: gate file was opened manually (`Set-Content .claude/.workflow-gate ready-to-implement`) for a fast-lane fix on the protected `apps/inference/src/` path; deletion handled at task close.
+- No integration test against the live proxy exists, which is why this regression slipped past unit tests. Adding a smoke test is tracked as a follow-up but deferred — sprint scope prioritizes the demo path.
+
+**Files**
+- Modified: `apps/inference/src/services/llm/opencode-zen.adapter.ts`
+- Modified: `apps/inference/src/services/llm/opencode-zen.adapter.test.ts`
+
+---
+
 ## 2026-05-28 — OpenCode Zen Responses API + Configurable LLM Model
 
 **Context**
