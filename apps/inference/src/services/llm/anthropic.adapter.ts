@@ -2,8 +2,6 @@ import Anthropic from "@anthropic-ai/sdk";
 import { inferenceConfig } from "../../config/config.js";
 import { LlmError, type LlmAdapter, type LlmOptions } from "./llm-adapter.js";
 
-const MODEL_ID = "claude-sonnet-4-6";
-
 export class AnthropicAdapter implements LlmAdapter {
   private readonly client: Anthropic;
 
@@ -19,7 +17,7 @@ export class AnthropicAdapter implements LlmAdapter {
     try {
       const stream = this.client.messages.stream(
         {
-          model: MODEL_ID,
+          model: inferenceConfig.ANTHROPIC_MODEL,
           max_tokens: 256, // 3 lines never need more than 256 tokens
           system: systemPrompt,
           messages: [{ role: "user", content: userPrompt }],
