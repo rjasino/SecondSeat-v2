@@ -32,10 +32,16 @@ export const inferenceConfig = {
   LLM_PROVIDER: provider,
   ANTHROPIC_API_KEY:
     provider === "anthropic" ? requireEnv("ANTHROPIC_API_KEY") : "",
+  ANTHROPIC_MODEL:
+    provider === "anthropic" ? requireEnv("ANTHROPIC_MODEL") : "",
+  // Must terminate at the API version prefix (e.g. https://opencode.ai/zen/v1).
+  // The OpenAI SDK appends the route suffix (`/responses`, `/chat/completions`).
   OPENCODE_ZEN_BASE_URL:
     provider === "opencode_zen" ? requireEnv("OPENCODE_ZEN_BASE_URL") : "",
   OPENCODE_ZEN_API_KEY:
     provider === "opencode_zen" ? requireEnv("OPENCODE_ZEN_API_KEY") : "",
+  OPENCODE_ZEN_MODEL:
+    provider === "opencode_zen" ? requireEnv("OPENCODE_ZEN_MODEL") : "",
 
   RETRIEVAL_K: parseInt(optionalEnv("RETRIEVAL_K", "4"), 10),
   // RETRIEVAL_MIN_SCORE is cosine similarity (0–1). Converted to max L2 distance

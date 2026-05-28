@@ -1,3 +1,5 @@
+⚠️ Drift notice: the Mongoose schemas in packages/db/src/models/ are the actual source of truth as of 2026-05-28. This doc will be reconciled post-MVP. See models for current field shapes.
+
 ### Collections
 
 #### `users`
