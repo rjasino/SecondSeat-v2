@@ -1,6 +1,6 @@
 /**
- * Seed privileged users (admin and/or author) into MongoDB.
- * Run with: npm run seed:privileged -w @secondseat/web
+ * Seed privileged users (admin and/or author) plus game data into MongoDB.
+ * Run with: npm run seed -w @secondseat/web
  *
  * Required env var: MONGO_URL
  *
@@ -15,23 +15,9 @@
  * The script is idempotent: if a user with the given email already exists
  * it is skipped rather than duplicated or overwritten.
  */
-import mongoose from "mongoose";
 import argon2 from "argon2";
-
-// Inline schema to avoid importing models that depend on full config validation
-const userSchema = new mongoose.Schema(
-  {
-    name: String,
-    email: { type: String, lowercase: true, unique: true },
-    password: String,
-    role: { type: String, enum: ["user", "author", "admin"], default: "user" },
-  },
-  { timestamps: true }
-);
-
-const User =
-  (mongoose.models["User"] as mongoose.Model<typeof userSchema>) ??
-  mongoose.model("User", userSchema);
+import { connectDB, GameModel, UserModel } from "@secondseat/db";
+import games from "./game.json";
 
 interface SeedConfig {
   role: "admin" | "author";
@@ -41,14 +27,14 @@ interface SeedConfig {
 }
 
 async function seedUser(cfg: SeedConfig): Promise<void> {
-  const existing = await User.findOne({ email: cfg.email.toLowerCase() });
+  const existing = await UserModel.findOne({ email: cfg.email.toLowerCase() });
   if (existing) {
     console.log(`[${cfg.role}] already exists: ${cfg.email} — skipping`);
     return;
   }
 
   const hash = await argon2.hash(cfg.password);
-  await User.create({
+  await UserModel.create({
     name: cfg.name,
     email: cfg.email.toLowerCase(),
     password: hash,
@@ -56,6 +42,20 @@ async function seedUser(cfg: SeedConfig): Promise<void> {
   });
 
   console.log(`[${cfg.role}] created: ${cfg.email}`);
+}
+
+async function seedGames(): Promise<void> {
+  for (const game of games) {
+    await GameModel.create({
+      title: game.title,
+      slug: game.slug,
+      developer: game.developer,
+      releaseYear: game.releaseYear,
+      genre: game.genre,
+      supported: game.supported,
+    });
+    console.log(`Game created: ${game.title}`);
+  }
 }
 
 async function main(): Promise<void> {
@@ -75,30 +75,42 @@ async function main(): Promise<void> {
   if (adminEmail && adminPassword) {
     if (adminPassword.length < 12)
       throw new Error("SEED_ADMIN_PASSWORD must be at least 12 characters");
-    toSeed.push({ role: "admin", email: adminEmail, password: adminPassword, name: adminName });
+    toSeed.push({
+      role: "admin",
+      email: adminEmail,
+      password: adminPassword,
+      name: adminName,
+    });
   }
 
   if (authorEmail && authorPassword) {
     if (authorPassword.length < 12)
       throw new Error("SEED_AUTHOR_PASSWORD must be at least 12 characters");
-    toSeed.push({ role: "author", email: authorEmail, password: authorPassword, name: authorName });
+    toSeed.push({
+      role: "author",
+      email: authorEmail,
+      password: authorPassword,
+      name: authorName,
+    });
   }
 
   if (toSeed.length === 0) {
     throw new Error(
       "No privileged users to seed. Provide at least one of:\n" +
-      "  SEED_ADMIN_EMAIL + SEED_ADMIN_PASSWORD\n" +
-      "  SEED_AUTHOR_EMAIL + SEED_AUTHOR_PASSWORD"
+        "  SEED_ADMIN_EMAIL + SEED_ADMIN_PASSWORD\n" +
+        "  SEED_AUTHOR_EMAIL + SEED_AUTHOR_PASSWORD",
     );
   }
 
-  await mongoose.connect(MONGO_URL);
+  const db = await connectDB();
 
   for (const cfg of toSeed) {
     await seedUser(cfg);
   }
 
-  await mongoose.disconnect();
+  await seedGames();
+
+  await db.disconnect();
 }
 
 main().catch((err: Error) => {
