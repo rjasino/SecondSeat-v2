@@ -12,7 +12,6 @@ import Placeholder from "@tiptap/extension-placeholder";
 import { Markdown } from "tiptap-markdown";
 import ToolbarButton from "./ToolbarButton";
 import ConfirmDialog from "@/components/ConfirmDialog";
-import { SEEDED_GAMES } from "@/lib/ingest/games";
 import {
   GUIDE_TYPE_VALUES,
   GUIDE_TYPE_LABELS,
@@ -94,11 +93,19 @@ export default function GuideWriterClient({
 }: Props) {
   const router = useRouter();
 
+  const [games, setGames] = useState<{ id: string; title: string; slug: string }[]>([]);
   const [sourceId, setSourceId] = useState<string | null>(
     initialSourceId ?? null
   );
   const [title, setTitle] = useState(initialTitle);
   const [game, setGame] = useState(initialGame);
+
+  useEffect(() => {
+    fetch("/api/games")
+      .then((r) => r.json() as Promise<{ id: string; title: string; slug: string }[]>)
+      .then(setGames)
+      .catch(() => { /* keep empty */ });
+  }, []);
   const [guideType, setGuideType] = useState(initialGuideType);
   const [author, setAuthor] = useState(initialAuthor);
   const [saveState, setSaveState] = useState<SaveState>("idle");
@@ -465,9 +472,9 @@ export default function GuideWriterClient({
               style={inputStyle}
             >
               <option value="">— Select game —</option>
-              {SEEDED_GAMES.map((g) => (
-                <option key={g.slug} value={g.label}>
-                  {g.label}
+              {games.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.title}
                 </option>
               ))}
             </select>
