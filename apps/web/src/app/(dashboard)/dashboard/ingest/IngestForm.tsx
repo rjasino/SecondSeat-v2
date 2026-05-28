@@ -1,12 +1,17 @@
 "use client";
 
-import { useState, useRef, type FormEvent } from "react";
-import { SEEDED_GAMES } from "@/lib/ingest/games";
+import { useState, useRef, useEffect, type FormEvent } from "react";
 import {
   GUIDE_TYPE_VALUES,
   GUIDE_TYPE_LABELS,
   type GuideType,
 } from "@/lib/ingest/schemas";
+
+interface GameOption {
+  id: string;
+  title: string;
+  slug: string;
+}
 
 interface UploadResult {
   sourceId: string;
@@ -40,9 +45,17 @@ const inputStyle: React.CSSProperties = {
 };
 
 export default function IngestForm({ onUploaded }: Props) {
+  const [games, setGames] = useState<GameOption[]>([]);
   const [game, setGame] = useState("");
   const [guideType, setGuideType] = useState("");
   const [author, setAuthor] = useState("");
+
+  useEffect(() => {
+    fetch("/api/games")
+      .then((r) => r.json() as Promise<GameOption[]>)
+      .then(setGames)
+      .catch(() => { /* keep empty — form validation will catch missing game */ });
+  }, []);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -121,9 +134,9 @@ export default function IngestForm({ onUploaded }: Props) {
           style={inputStyle}
         >
           <option value="">— Select game —</option>
-          {SEEDED_GAMES.map((g) => (
-            <option key={g.slug} value={g.label}>
-              {g.label}
+          {games.map((g) => (
+            <option key={g.id} value={g.id}>
+              {g.title}
             </option>
           ))}
         </select>

@@ -52,7 +52,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-Inference-Secret": config.INFERENCE_SERVICE_SECRET,
+        "X-Service-Secret": config.INFERENCE_SERVICE_SECRET,
+        "X-User-Id": session.userId,
+        "X-User-Role": session.role,
       },
       body: JSON.stringify(parsed.data),
     });

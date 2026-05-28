@@ -1,6 +1,12 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
+
+interface GameOption {
+  id: string;
+  title: string;
+  slug: string;
+}
 
 // --- Types ---
 type PlayerGoal = "progression" | "exploration" | "confirmation" | "completion";
@@ -10,6 +16,7 @@ interface SessionState {
   playSessionId: string;
   runContextId: string;
   gameId: string;
+  gameTitle: string;
   gameArea: string;
   chapter: string;
   playerGoal: PlayerGoal;
@@ -42,8 +49,6 @@ interface HintForm {
 }
 
 // --- Helpers ---
-const OID_REGEX = /^[a-f\d]{24}$/i;
-
 function generateObjectId(): string {
   const bytes = new Uint8Array(12);
   crypto.getRandomValues(bytes);
@@ -70,8 +75,16 @@ const rowStyle: React.CSSProperties = {
 };
 
 export default function PlayClient() {
+  const [games, setGames] = useState<GameOption[]>([]);
   const [session, setSession] = useState<SessionState | null>(null);
   const [showForm, setShowForm] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/games")
+      .then((r) => r.json() as Promise<GameOption[]>)
+      .then(setGames)
+      .catch(() => { /* keep empty */ });
+  }, []);
 
   const [sessionForm, setSessionForm] = useState<SessionForm>({
     gameId: "",
@@ -100,8 +113,8 @@ export default function PlayClient() {
   // --- Session start ---
   const handleStartSession = useCallback(() => {
     const errors: Record<string, string> = {};
-    if (!OID_REGEX.test(sessionForm.gameId))
-      errors["gameId"] = "Must be a valid 24-character hex ObjectId.";
+    if (!sessionForm.gameId)
+      errors["gameId"] = "Please select a game.";
     if (!sessionForm.gameArea.trim())
       errors["gameArea"] = "Game Area is required.";
     if (!sessionForm.chapter.trim())
@@ -109,10 +122,12 @@ export default function PlayClient() {
     setFormErrors(errors);
     if (Object.keys(errors).length > 0) return;
 
+    const selectedGame = games.find((g) => g.id === sessionForm.gameId);
     setSession({
       playSessionId: generateObjectId(),
       runContextId: generateObjectId(),
-      gameId: sessionForm.gameId.trim(),
+      gameId: sessionForm.gameId,
+      gameTitle: selectedGame?.title ?? sessionForm.gameId,
       gameArea: sessionForm.gameArea.trim(),
       chapter: sessionForm.chapter.trim(),
       playerGoal: sessionForm.playerGoal,
@@ -300,18 +315,22 @@ export default function PlayClient() {
 
             <div style={rowStyle}>
               <label style={labelStyle}>
-                Game ID <span style={{ color: "var(--danger)" }}>*</span>
+                Game <span style={{ color: "var(--danger)" }}>*</span>
               </label>
-              <input
-                type="text"
-                placeholder="24-character hex ObjectId"
+              <select
                 value={sessionForm.gameId}
-                spellCheck={false}
                 onChange={(e) => {
                   setSessionForm((p) => ({ ...p, gameId: e.target.value }));
                   setFormErrors((fe) => ({ ...fe, gameId: "" }));
                 }}
-              />
+              >
+                <option value="">— Select game —</option>
+                {games.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.title}
+                  </option>
+                ))}
+              </select>
               {formErrors["gameId"] && <p className="error-msg">{formErrors["gameId"]}</p>}
             </div>
 
@@ -420,7 +439,7 @@ export default function PlayClient() {
           Session Context
         </p>
         <div style={{ display: "flex", flexWrap: "wrap", gap: "1.5rem", fontSize: "13px" }}>
-          <SessionField label="Game ID" value={`${session!.gameId.slice(0, 8)}…`} />
+          <SessionField label="Game" value={session!.gameTitle} />
           <SessionField label="Area" value={session!.gameArea} />
           <SessionField label="Chapter" value={session!.chapter} />
           <SessionField label="Goal" value={session!.playerGoal} />
