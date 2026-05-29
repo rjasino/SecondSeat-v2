@@ -38,7 +38,10 @@ export class OpenCodeZenAdapter implements LlmAdapter {
           // OpenCode Zen's proxy maps Responses → Anthropic Messages. A bare
           // string `input` drops the user message, so pass the structured
           // input-items form to guarantee a user turn reaches Anthropic.
-          input: [{ role: "user", content: userPrompt }],
+          input: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt },
+          ],
           max_output_tokens: 256, // 3 lines never need more than 256 tokens
           stream: true,
         },

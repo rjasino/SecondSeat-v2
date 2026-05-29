@@ -57,6 +57,30 @@ vi.mock("@secondseat/embedding", () => ({
   warmupEmbeddingModel: vi.fn(),
 }));
 
+// --- Mock Mongo models used directly by the route handler ---
+const { mockGameFindById, mockPlaySessionFindById, mockProfileFindOne, mockPreferencesFindOne } =
+  vi.hoisted(() => ({
+    mockGameFindById: vi.fn(),
+    mockPlaySessionFindById: vi.fn(),
+    mockProfileFindOne: vi.fn(),
+    mockPreferencesFindOne: vi.fn(),
+  }));
+
+/** Build the `.select(...).lean()` chain Mongoose calls expect. */
+function leanChain<T>(value: T) {
+  return {
+    select: () => ({ lean: async () => value }),
+    lean: async () => value,
+  };
+}
+
+vi.mock("@secondseat/db", () => ({
+  GameModel: { findById: (id: string) => mockGameFindById(id) },
+  PlaySessionModel: { findById: (id: string) => mockPlaySessionFindById(id) },
+  ProfileModel: { findOne: (q: unknown) => mockProfileFindOne(q) },
+  PreferencesModel: { findOne: (q: unknown) => mockPreferencesFindOne(q) },
+}));
+
 import { authMiddleware } from "../middleware/auth.middleware.js";
 import { errorMiddleware } from "../middleware/error.middleware.js";
 import { generateRouter } from "./generate.route.js";
@@ -91,6 +115,17 @@ describe("POST /api/v1/generate", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    // Re-establish default Mongo mock responses each test.
+    mockGameFindById.mockReturnValue(leanChain({ title: "Resident Evil 2" }));
+    mockPlaySessionFindById.mockReturnValue(leanChain({ userId: "user-mongo-id" }));
+    mockProfileFindOne.mockReturnValue(
+      leanChain({
+        _id: "profile-mongo-id",
+        hintPhilosophy: "directional",
+        spoilerTolerance: "low",
+      })
+    );
+    mockPreferencesFindOne.mockReturnValue(leanChain({ maxHintLines: 3 }));
     app = buildTestApp();
   });
 
@@ -168,5 +203,67 @@ describe("POST /api/v1/generate", () => {
     expect(payload.lineCount).toBeLessThanOrEqual(3);
 
     void doneLine; // used above
+  });
+
+  it("logs profile_missing and falls back when Profile is not found", async () => {
+    mockProfileFindOne.mockReturnValueOnce(leanChain(null));
+    // Preferences depends on profileId; without a profile, that branch also fires its own log.
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const res = await request(app)
+      .post("/api/v1/generate")
+      .set(AUTH_HEADERS)
+      .send(VALID_BODY)
+      .buffer(true)
+      .parse((res, callback) => {
+        let data = "";
+        res.on("data", (chunk: Buffer) => { data += chunk.toString(); });
+        res.on("end", () => callback(null, data));
+      });
+
+    expect(res.body).toContain("event: done");
+    const warned = warnSpy.mock.calls.flat().join(" ");
+    expect(warned).toMatch(/profile_missing/);
+    warnSpy.mockRestore();
+  });
+
+  it("logs preferences_missing and falls back when Preferences is not found", async () => {
+    mockPreferencesFindOne.mockReturnValueOnce(leanChain(null));
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const res = await request(app)
+      .post("/api/v1/generate")
+      .set(AUTH_HEADERS)
+      .send(VALID_BODY)
+      .buffer(true)
+      .parse((res, callback) => {
+        let data = "";
+        res.on("data", (chunk: Buffer) => { data += chunk.toString(); });
+        res.on("end", () => callback(null, data));
+      });
+
+    expect(res.body).toContain("event: done");
+    const warned = warnSpy.mock.calls.flat().join(" ");
+    expect(warned).toMatch(/preferences_missing/);
+    warnSpy.mockRestore();
+  });
+
+  it("emits a refusal when Game is not found rather than crashing", async () => {
+    mockGameFindById.mockReturnValueOnce(leanChain(null));
+
+    const res = await request(app)
+      .post("/api/v1/generate")
+      .set(AUTH_HEADERS)
+      .send(VALID_BODY)
+      .buffer(true)
+      .parse((res, callback) => {
+        let data = "";
+        res.on("data", (chunk: Buffer) => { data += chunk.toString(); });
+        res.on("end", () => callback(null, data));
+      });
+
+    expect(res.body).toContain("event: done");
+    expect(res.body).toMatch(/"refused":true/);
+    expect(res.body).toMatch(/insufficient_context/);
   });
 });

@@ -10,7 +10,19 @@ import {
   insertHintResponse,
 } from "../services/persistence/hint-log.service.js";
 import { inferenceConfig } from "../config/config.js";
-import type { RefusalReason } from "@secondseat/db";
+import {
+  GameModel,
+  PlaySessionModel,
+  ProfileModel,
+  PreferencesModel,
+  type RefusalReason,
+} from "@secondseat/db";
+import { DEFAULT_PROFILE, DEFAULT_PREFERENCES } from "../lib/defaults.js";
+import type {
+  PromptGame,
+  PromptProfile,
+  PromptPreferences,
+} from "../services/prompt/prompt-template.js";
 
 export const generateRouter = Router();
 
@@ -166,6 +178,70 @@ generateRouter.post(
       hintRequestId = "000000000000000000000000"; // non-fatal; continue
     }
 
+    // --- 7b. Load player context for the prompt ---
+    // Game is required — an unknown gameId is a real client error, not a
+    // missing-user-data row, so we don't fall back.
+    const gameDoc = await GameModel.findById(body.gameId)
+      .select("title")
+      .lean();
+    if (!gameDoc) {
+      console.error(`[generate] Game not found for gameId=${body.gameId}`);
+      await emitRefusal(
+        "insufficient_context",
+        INSUFFICIENT_CONTEXT_MESSAGE,
+        hintRequestId
+      );
+      return;
+    }
+    const promptGame: PromptGame = { title: gameDoc.title };
+
+    // Profile / Preferences: tolerated missing. Apply defaults + log a
+    // grep-able token per request so demo logs are countable.
+    const playSession = await PlaySessionModel.findById(body.playSessionId)
+      .select("userId")
+      .lean();
+
+    let promptProfile: PromptProfile = DEFAULT_PROFILE;
+    let profileId: string | null = null;
+    if (playSession?.userId) {
+      const profile = await ProfileModel.findOne({
+        userId: playSession.userId,
+      }).lean();
+      if (profile) {
+        profileId = profile._id.toString();
+        promptProfile = {
+          hintPhilosophy: profile.hintPhilosophy,
+          spoilerTolerance: profile.spoilerTolerance,
+        };
+      } else {
+        console.warn(
+          `[generate] profile_missing userId=${String(playSession.userId)} — falling back to defaults`
+        );
+      }
+    } else {
+      console.warn(
+        `[generate] profile_missing playSessionId=${body.playSessionId} (no playSession or userId) — falling back to defaults`
+      );
+    }
+
+    let promptPreferences: PromptPreferences = DEFAULT_PREFERENCES;
+    if (profileId) {
+      const prefs = await PreferencesModel.findOne({
+        profileId,
+      }).lean();
+      if (prefs) {
+        promptPreferences = { maxHintLines: prefs.maxHintLines };
+      } else {
+        console.warn(
+          `[generate] preferences_missing profileId=${profileId} — falling back to defaults`
+        );
+      }
+    } else {
+      console.warn(
+        `[generate] preferences_missing (no profile) — falling back to defaults`
+      );
+    }
+
     // --- 8. Assemble prompt ---
     const { systemPrompt, userPrompt } = buildPrompt({
       playerQuestion: body.text,
@@ -177,6 +253,9 @@ generateRouter.post(
         playerGoal: body.playerGoal,
         confidenceLevel: body.confidenceLevel,
       },
+      game: promptGame,
+      profile: promptProfile,
+      preferences: promptPreferences,
       sessionMemory: "", // Stubbed until IF-E ships
     });
 
