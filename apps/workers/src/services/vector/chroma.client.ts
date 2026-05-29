@@ -11,6 +11,12 @@ export interface VectorRecord {
     game_id: string;
     heading_path: string;
     author: string;
+    // Optional structured location fields parsed from heading_path at ingest.
+    // Used by inference as a soft Chroma `where` filter (SPEC-context-aware-retrieval).
+    route?: string;
+    chapter?: string;
+    area?: string;
+    sub_area?: string;
   };
   document: string;
 }

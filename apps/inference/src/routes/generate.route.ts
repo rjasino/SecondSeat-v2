@@ -129,7 +129,12 @@ generateRouter.post(
     // --- 5. ChromaDB retrieval ---
     let chunks;
     try {
-      chunks = await retrieveChunks(body.text, body.gameId);
+      chunks = await retrieveChunks(body.text, body.gameId, {
+        gameArea: body.gameArea,
+        chapter: body.chapter,
+        subArea: body.subArea,
+        playerGoal: body.playerGoal,
+      });
     } catch (err) {
       console.error("[generate] Retrieval failed:", err);
       await emitRefusal("insufficient_context", INSUFFICIENT_CONTEXT_MESSAGE);
