@@ -11,7 +11,14 @@ const MAX_TOKENS = 220; // all-MiniLM-L6-v2 limit is 256; leave headroom for pre
 const CHARS_PER_TOKEN = 4;
 
 export interface Chunk {
-  content: string;      // heading prefix + body text, ready for embedding
+  /** Body text only — no heading prefix. Stored in RagDocument.content and
+   *  Chroma's `documents`, returned to inference, formatted into the prompt. */
+  content: string;
+  /** `[<headingPath>]\n<body>` — passed to embedText() for retrieval semantics.
+   *  NOT persisted; the prefix is reconstructed at embed-time from headingPath
+   *  + content so retrieval recall is preserved without duplicating the heading
+   *  into the prompt (SPEC-profile-aware-prompt, Story 3). */
+  embeddingInput: string;
   headingPath: string;  // e.g. "Water Temple > First Floor > Block Puzzle"
   chunkIndex: number;
   tokens: number;
@@ -123,7 +130,8 @@ export function chunkText(text: string): Chunk[] {
 
     if (estimateTokens(fullContent) <= MAX_TOKENS) {
       chunks.push({
-        content: fullContent,
+        content: section.body,
+        embeddingInput: fullContent,
         headingPath: section.headingPath,
         chunkIndex: chunks.length,
         tokens: estimateTokens(fullContent),
@@ -139,7 +147,8 @@ export function chunkText(text: string): Chunk[] {
       const partContent = `${prefix}\n${body}`;
       if (estimateTokens(partContent) <= MAX_TOKENS) {
         chunks.push({
-          content: partContent,
+          content: body,
+          embeddingInput: partContent,
           headingPath: section.headingPath,
           chunkIndex: chunks.length,
           tokens: estimateTokens(partContent),
@@ -152,7 +161,8 @@ export function chunkText(text: string): Chunk[] {
         for (const sentence of sentences) {
           const sentContent = `${prefix}\n${sentence}`;
           chunks.push({
-            content: sentContent,
+            content: sentence,
+            embeddingInput: sentContent,
             headingPath: section.headingPath,
             chunkIndex: chunks.length,
             tokens: estimateTokens(sentContent),

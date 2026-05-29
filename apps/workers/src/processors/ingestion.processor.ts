@@ -104,10 +104,12 @@ export async function processIngestionJob(
       // at retrieval time (SPEC-context-aware-retrieval, Story 2).
       const parsedHeading = parseHeadingPath(chunk.headingPath);
 
-      // Generate embedding
+      // Generate embedding. We pass `embeddingInput` (heading prefix + body)
+      // so retrieval recall keeps benefiting from the heading signal, while
+      // `content` (body only) is what gets stored and later shown in prompts.
       let embedding: number[];
       try {
-        embedding = await embedText(chunk.content);
+        embedding = await embedText(chunk.embeddingInput);
       } catch (err) {
         throw new IngestionError(
           "embedding_failed",
