@@ -7,6 +7,7 @@ import { loadMarkdown, IngestionError } from "../services/load/md.reader.js";
 import { loadHtml } from "../services/load/html.reader.js";
 import { cleanMarkdown } from "../services/load/clean.js";
 import { chunkText } from "../services/chunk/node-parser.service.js";
+import { parseHeadingPath } from "../services/chunk/heading-path.parser.js";
 import { embedText } from "../services/embed/embedding.service.js";
 import { upsertVectors, deleteVectors } from "../services/vector/chroma.client.js";
 import { classifyChunk } from "../services/classify/chunk-classifier.js";
@@ -99,6 +100,10 @@ export async function processIngestionJob(
         chunk.content
       );
 
+      // Parse heading path into structured location metadata for soft filtering
+      // at retrieval time (SPEC-context-aware-retrieval, Story 2).
+      const parsedHeading = parseHeadingPath(chunk.headingPath);
+
       // Generate embedding
       let embedding: number[];
       try {
@@ -125,6 +130,7 @@ export async function processIngestionJob(
               game_id: gameId,
               heading_path: chunk.headingPath,
               author,
+              ...parsedHeading,
             },
             document: chunk.content,
           },
@@ -173,6 +179,7 @@ export async function processIngestionJob(
               game_id: gameId,
               heading_path: chunk.headingPath,
               author,
+              ...parsedHeading,
             },
             document: chunk.content,
           },

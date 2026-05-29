@@ -1,5 +1,6 @@
-import { ChromaClient } from "chromadb";
+import { ChromaClient, type Where } from "chromadb";
 import { embedText } from "@secondseat/embedding";
+import { GameModel } from "@secondseat/db";
 import { inferenceConfig, RETRIEVAL_MAX_L2_DISTANCE } from "../../config/config.js";
 
 export interface RetrievedChunk {
@@ -13,6 +14,18 @@ export interface RetrievedChunk {
   spoiler: boolean;
 }
 
+/**
+ * Run-context fields used to bias retrieval toward the player's current
+ * location and goal. Mirrors the subset of `GenerateRequest` that the
+ * retrieval service consumes.
+ */
+export interface RetrievalRunContext {
+  gameArea: string;
+  chapter: string;
+  subArea?: string;
+  playerGoal: string;
+}
+
 let _client: ChromaClient | null = null;
 
 function getClient(): ChromaClient {
@@ -23,48 +36,77 @@ function getClient(): ChromaClient {
 }
 
 /**
- * Embeds the player query, queries ChromaDB for the top-k matching chunks
- * scoped to the given gameId, and filters out results below the minimum
- * similarity threshold.
+ * Composes the embedding query string per SPEC-context-aware-retrieval Story 1:
+ *   "<gameTitle> | <chapter> | <gameArea> | <subArea> | goal:<playerGoal> | <rawQuery>"
  *
- * Distance metric: L2 (ChromaDB default). For normalized embeddings (all-MiniLM-L6-v2)
- * the conversion is: cosine_similarity = 1 - (l2_distance² / 2).
+ * Missing optional segments (currently only `subArea`) are dropped, not rendered
+ * as empty tokens. Casing is preserved here — Chroma metadata is the only place
+ * we lowercase for exact-equality filtering.
  */
-export async function retrieveChunks(
-  queryText: string,
-  gameId: string
-): Promise<RetrievedChunk[]> {
-  const start = Date.now();
+export function buildEnrichedQuery(
+  gameTitle: string,
+  ctx: RetrievalRunContext,
+  rawQuery: string
+): string {
+  return [
+    gameTitle,
+    ctx.chapter,
+    ctx.gameArea,
+    ctx.subArea,
+    `goal:${ctx.playerGoal}`,
+    rawQuery,
+  ]
+    .filter((s): s is string => typeof s === "string" && s.length > 0)
+    .join(" | ");
+}
 
-  const queryEmbedding = await embedText(queryText);
+/**
+ * Builds the `$or` clause that prefers chunks in the player's current location.
+ * Returns `null` if no location fields are usable (caller should skip the
+ * filter and query by `game_id` alone).
+ */
+function buildLocationOrClause(ctx: RetrievalRunContext): Where | null {
+  const clauses: Where[] = [];
+  if (ctx.chapter) clauses.push({ chapter: ctx.chapter.toLowerCase() });
+  if (ctx.gameArea) clauses.push({ area: ctx.gameArea.toLowerCase() });
+  if (ctx.subArea) clauses.push({ sub_area: ctx.subArea.toLowerCase() });
+  if (clauses.length === 0) return null;
+  if (clauses.length === 1) return clauses[0]!;
+  return { $or: clauses } as Where;
+}
 
-  const client = getClient();
-  const collection = await client.getOrCreateCollection({
-    name: inferenceConfig.CHROMA_COLLECTION,
-  });
+interface ChromaQueryResult {
+  ids: string[][];
+  distances?: (number | null)[][] | null;
+  metadatas: (Record<string, unknown> | null)[][];
+  documents: (string | null)[][];
+}
 
-  const results = await collection.query({
-    queryEmbeddings: [queryEmbedding],
-    nResults: inferenceConfig.RETRIEVAL_K,
-    where: { game_id: gameId },
-  });
+interface CollectionLike {
+  query: (args: {
+    queryEmbeddings: number[][];
+    nResults: number;
+    where: Where;
+  }) => Promise<ChromaQueryResult>;
+}
 
-  const ids = results.ids[0] ?? [];
-  const distances = results.distances?.[0] ?? [];
-  const metadatas = results.metadatas[0] ?? [];
-  const documents = results.documents[0] ?? [];
+/**
+ * Maps a raw Chroma query result through the L2 threshold filter and into
+ * the typed `RetrievedChunk[]` shape.
+ */
+function projectChromaResult(result: ChromaQueryResult): RetrievedChunk[] {
+  const ids = result.ids[0] ?? [];
+  const distances = result.distances?.[0] ?? [];
+  const metadatas = result.metadatas[0] ?? [];
+  const documents = result.documents[0] ?? [];
 
   const chunks: RetrievedChunk[] = [];
 
   for (let i = 0; i < ids.length; i++) {
     const l2Distance = distances[i] ?? Infinity;
-
-    // Filter below similarity threshold
     if (l2Distance > RETRIEVAL_MAX_L2_DISTANCE) continue;
 
-    // Cosine similarity from L2 distance (normalized vectors)
     const cosineSimilarity = 1 - (l2Distance * l2Distance) / 2;
-
     const meta = metadatas[i] ?? {};
     const rawSpoiler = (meta as Record<string, unknown>)["spoiler"];
 
@@ -76,14 +118,84 @@ export async function retrieveChunks(
       headingPath: String((meta as Record<string, unknown>)["heading_path"] ?? ""),
       content: documents[i] ?? "",
       similarityScore: Math.max(0, Math.min(1, cosineSimilarity)),
-      // metadata.spoiler === undefined is treated as false (safe — see decisions.md)
       spoiler: rawSpoiler === true,
     });
   }
 
+  return chunks;
+}
+
+/**
+ * Embeds an enriched player query, queries ChromaDB for top-k matching chunks
+ * scoped by `game_id` and softly filtered by the player's current location
+ * (`chapter`/`area`/`sub_area`). If the location-filtered query returns zero
+ * usable chunks, the query is re-issued without the location `$or` so the
+ * player flow never hard-fails on unindexed regions.
+ *
+ * Distance metric: L2 (ChromaDB default). For normalized embeddings
+ * (all-MiniLM-L6-v2) the conversion is: cosine_similarity = 1 - (l2² / 2).
+ */
+export async function retrieveChunks(
+  queryText: string,
+  gameId: string,
+  runContext: RetrievalRunContext
+): Promise<RetrievedChunk[]> {
+  const start = Date.now();
+
+  // Load the game so we can prefix its title onto the embedding query.
+  // Throws if missing — there is no silent fallback (per spec Story 1 AC).
+  const game = await GameModel.findById(gameId).select("title").lean();
+  if (!game) {
+    throw new Error(`[retrieval] Game not found for id=${gameId}`);
+  }
+
+  const enrichedQuery = buildEnrichedQuery(game.title, runContext, queryText);
+  const queryEmbedding = await embedText(enrichedQuery);
+
+  const client = getClient();
+  const collection = (await client.getOrCreateCollection({
+    name: inferenceConfig.CHROMA_COLLECTION,
+  })) as unknown as CollectionLike;
+
+  const baseGameFilter: Where = { game_id: gameId };
+  const locationClause = buildLocationOrClause(runContext);
+
+  // --- 1. Primary: filtered by location ---
+  let chunks: RetrievedChunk[] = [];
+  let filterStatus: "hit" | "miss" | "none" = "none";
+
+  if (locationClause) {
+    const filteredWhere: Where = {
+      $and: [baseGameFilter, locationClause],
+    } as Where;
+
+    const filteredResult = await collection.query({
+      queryEmbeddings: [queryEmbedding],
+      nResults: inferenceConfig.RETRIEVAL_K,
+      where: filteredWhere,
+    });
+    chunks = projectChromaResult(filteredResult);
+    filterStatus = chunks.length > 0 ? "hit" : "miss";
+  }
+
+  // --- 2. Fallback: game-only filter if the location filter found nothing ---
+  if (chunks.length === 0) {
+    if (locationClause) {
+      console.log(
+        `[retrieval] area_filter_miss game=${gameId} chapter=${runContext.chapter} area=${runContext.gameArea} sub_area=${runContext.subArea ?? ""}`
+      );
+    }
+    const fallbackResult = await collection.query({
+      queryEmbeddings: [queryEmbedding],
+      nResults: inferenceConfig.RETRIEVAL_K,
+      where: baseGameFilter,
+    });
+    chunks = projectChromaResult(fallbackResult);
+  }
+
   const ms = Date.now() - start;
   console.log(
-    `[retrieval] query="${queryText.slice(0, 40)}…" game=${gameId} k=${inferenceConfig.RETRIEVAL_K} returned=${chunks.length} chunks in ${ms}ms`
+    `[retrieval] query="${queryText.slice(0, 40)}…" game=${gameId} k=${inferenceConfig.RETRIEVAL_K} filter=${filterStatus} returned=${chunks.length} chunks in ${ms}ms`
   );
 
   return chunks;

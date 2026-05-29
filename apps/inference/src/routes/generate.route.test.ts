@@ -136,7 +136,8 @@ describe("POST /api/v1/generate", () => {
 
     expect(res.headers["content-type"]).toMatch(/text\/event-stream/);
     expect(res.headers["cache-control"]).toMatch(/no-cache/);
-    expect(res.text).toContain("event: done");
+    // Custom .parse() stores its result in res.body, not res.text
+    expect(res.body).toContain("event: done");
   });
 
   it("returns refused=false on a clean hint response", async () => {
@@ -151,12 +152,13 @@ describe("POST /api/v1/generate", () => {
         res.on("end", () => callback(null, data));
       });
 
-    const doneLine = res.text
+    // Custom .parse() stores its result in res.body, not res.text
+    const doneLine = res.body
       .split("\n")
-      .find((l: string) => l.startsWith("data:") && res.text.includes("event: done"));
+      .find((l: string) => l.startsWith("data:") && res.body.includes("event: done"));
 
     // Find the data line after "event: done"
-    const lines = res.text.split("\n");
+    const lines = res.body.split("\n");
     const doneIdx = lines.findIndex((l: string) => l === "event: done");
     const doneData = lines[doneIdx + 1] ?? "";
     const payload = JSON.parse(doneData.replace("data: ", ""));
