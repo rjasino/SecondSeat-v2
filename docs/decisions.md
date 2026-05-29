@@ -4,6 +4,33 @@ Architecture and product decisions for SecondSeat, in reverse chronological orde
 
 ---
 
+## 2026-05-30 — Remove Unique-Per-Author Constraint on RagSource game+author Index
+
+**Context**
+The `rag_sources` collection had a unique compound index on `{ "metadata.game", "metadata.author" }`, enforcing a hard limit of one guide source per author per game. This was an implicit design assumption from early ingestion work — not an intentional product constraint. Authors may legitimately contribute multiple categorized guides for the same game (e.g. a walkthrough and a secrets/collectibles guide), and the system benefits from having these as separate, independently indexable RAG sources.
+
+**Decision**
+- Drop the unique compound index `{ "metadata.game": 1, "metadata.author": 1 }` from `ragSourceSchema` entirely. No replacement index is added now; per-game query optimization is explicitly deferred.
+- Provide a one-time migration script (`packages/db/src/migrations/drop-rag-source-author-unique-index.ts`) to drop the old index from the live `rag_sources` collection. Mongoose does not auto-migrate live indexes from unique to non-unique.
+- No application-layer deduplication is introduced. Title or content-hash deduplication, if ever needed, is a separate future concern.
+
+**Alternatives considered**
+- **Replace with a non-unique index on the same compound key** — rejected for now; no query pattern currently requires filtering by both `game` and `author` together. Premature optimization.
+- **Keep unique, add a `guideType` discriminator to the key** — rejected; adds schema complexity and a required field where none exists. Deferred to a future spec if multi-guide categorization becomes a product feature.
+- **Application-layer guard to prevent duplicates by title** — rejected; the constraint belongs in the DB if it belongs anywhere, and the product requirement is explicitly to allow multiple submissions.
+
+**Consequences**
+- Authors can submit multiple guide sources per game immediately after the migration runs.
+- The live MongoDB collection requires the one-time migration script to be run manually; the service does not run it automatically on startup.
+- No impact on `apps/workers` or `apps/inference` — neither relies on the uniqueness invariant.
+- Per-game RAG source lookup performance is slightly unoptimized until a follow-up index is added (tracked as a future optimization).
+
+**Files**
+- Modified: `packages/db/src/models/rag-source.model.ts`
+- Added:    `packages/db/src/migrations/drop-rag-source-author-unique-index.ts`
+
+---
+
 ## 2026-05-28 — OpenCode Zen Responses API: structured `input` form
 
 **Context**
