@@ -60,7 +60,8 @@ describe("buildPrompt", () => {
 
   it("does NOT mark clean chunks with [SPOILER]", () => {
     const { systemPrompt } = buildPrompt(baseSlots);
-    expect(systemPrompt).not.toContain("[SPOILER");
+    // HINT_POLICY itself contains "[SPOILER]" in rule 4 — target the chunk label specifically
+    expect(systemPrompt).not.toContain("[SPOILER — do not reference]");
   });
 
   it("includes run context fields in the system prompt", () => {
