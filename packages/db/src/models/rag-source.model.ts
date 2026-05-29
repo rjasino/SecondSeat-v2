@@ -64,16 +64,6 @@ const ragSourceSchema = new Schema<IRagSource>(
   { timestamps: true }
 );
 
-ragSourceSchema.index(
-  { "metadata.game": 1, "metadata.author": 1 },
-  {
-    unique: true,
-    partialFilterExpression: {
-      "metadata.game": { $exists: true, $type: "string" },
-      "metadata.author": { $exists: true, $type: "string" },
-    },
-  }
-);
 
 export const RagSourceModel: Model<IRagSource> =
   (mongoose.models["RagSource"] as Model<IRagSource>) ??

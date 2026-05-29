@@ -6,6 +6,21 @@ All notable changes to SecondSeat are documented here. Format loosely follows [K
 
 ## Unreleased
 
+### Changed
+
+- **DB / Schema:** Removed the unique compound index `{ "metadata.game": 1, "metadata.author": 1 }` from `ragSourceSchema`. An author can now submit multiple guide sources for the same game. The index is dropped entirely (no replacement) — per-game query optimization is deferred.
+
+### Added
+
+- **DB / Migration:** One-time migration script `packages/db/src/migrations/drop-rag-source-author-unique-index.ts` drops the old unique index from the live `rag_sources` collection.
+
+### Files
+
+- Modified: `packages/db/src/models/rag-source.model.ts`
+- Added:    `packages/db/src/migrations/drop-rag-source-author-unique-index.ts`
+
+---
+
 ### Fixed
 
 - **Inference / LLM:** `OpenCodeZenAdapter` now passes `input` to OpenCode Zen's Responses API as a structured input-items array (`[{ role: "user", content: userPrompt }]`) instead of a bare string. The proxy's translation to Anthropic Messages dropped the user turn when `input` was a string, surfacing as `400 Error from provider (Anthropic): messages: at least one message is required` at hint stream time. Unit test assertion updated to match the array form. No public API change.
