@@ -1,11 +1,6 @@
 import * as cheerio from "cheerio";
 import type { Element, AnyNode, Text } from "domhandler";
-import { IngestionError } from "./md.reader.js";
-
-export interface LoadedDocument {
-  content: string;
-  filename: string;
-}
+import { IngestionError, type LoadedDocument } from "./md.reader.js";
 
 export function loadHtml(html: string, filename: string): LoadedDocument {
   if (!html.trim()) {
@@ -81,5 +76,5 @@ export function loadHtml(html: string, filename: string): LoadedDocument {
     throw new IngestionError("empty_content", "No extractable text found in HTML");
   }
 
-  return { content, filename };
+  return { content, filename, frontmatter: {} };
 }

@@ -2,59 +2,50 @@ import { describe, it, expect } from "vitest";
 import { parseHeadingPath } from "./heading-path.parser.js";
 
 describe("parseHeadingPath", () => {
-  it("parses a four-segment path positionally with lowercased values", () => {
+  it("maps segment[0] → route, segment[1] → area, segment[2] → sub_area", () => {
     const result = parseHeadingPath(
-      "Leon A > Get to the RPD (Leon) > Navigate the Sewers (Leon) > Save Ada"
+      "Leon A > Main Hall 1st Floor > Reception 1st Floor"
     );
     expect(result).toEqual({
       route: "leon a",
-      chapter: "get to the rpd (leon)",
-      area: "navigate the sewers (leon)",
-      sub_area: "save ada",
+      area: "main hall 1st floor",
+      sub_area: "reception 1st floor",
     });
   });
 
-  it("populates only present segments when fewer than four exist", () => {
-    expect(parseHeadingPath("Walkthrough > Side Quests")).toEqual({
-      route: "walkthrough",
-      chapter: "side quests",
+  it("maps a 2-segment path to route + area (no sub_area)", () => {
+    expect(parseHeadingPath("Leon A > Underground Facility")).toEqual({
+      route: "leon a",
+      area: "underground facility",
     });
   });
 
-  it("populates only segment[0] for a single-segment path", () => {
+  it("populates only route for a single-segment path", () => {
     expect(parseHeadingPath("Document")).toEqual({ route: "document" });
   });
 
-  it("truncates to the first four segments when more exist", () => {
-    const result = parseHeadingPath(
-      "A > B > C > D > E > F"
-    );
-    expect(result).toEqual({
-      route: "a",
-      chapter: "b",
-      area: "c",
-      sub_area: "d",
-    });
+  it("truncates to the first 3 segments when 4 or more are present", () => {
+    const result = parseHeadingPath("A > B > C > D > E");
+    expect(result).toEqual({ route: "a", area: "b", sub_area: "c" });
   });
 
-  it("trims whitespace inside segments", () => {
-    expect(parseHeadingPath("  Leon A  >  Sewers  ")).toEqual({
+  it("lowercases and trims each segment", () => {
+    expect(parseHeadingPath("  Leon A  >  Underground Facility  ")).toEqual({
       route: "leon a",
-      chapter: "sewers",
+      area: "underground facility",
     });
   });
 
-  it("omits empty segments produced by adjacent separators", () => {
-    // Splitting "A >  > B" on " > " yields ["A", "", "B"]; the empty segment
-    // is dropped, but it still consumes the chapter slot positionally — that's
-    // acceptable for the v1 mapping and matches the strict-positional contract.
+  it("omits the area slot when it contains only whitespace", () => {
+    // "A >  > B" splits to ["A", "", "B"]; empty segment is dropped,
+    // but it still consumes the area slot positionally.
     const result = parseHeadingPath("A >  > B");
     expect(result.route).toBe("a");
-    expect(result.chapter).toBeUndefined();
-    expect(result.area).toBe("b");
+    expect(result.area).toBeUndefined();
+    expect(result.sub_area).toBe("b");
   });
 
-  it("returns an empty object for empty input", () => {
+  it("returns an empty object for empty or whitespace-only input", () => {
     expect(parseHeadingPath("")).toEqual({});
     expect(parseHeadingPath("   ")).toEqual({});
   });

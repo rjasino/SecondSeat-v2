@@ -2,12 +2,12 @@
  * Parses a chunk's `headingPath` into structured location metadata that
  * inference can use as a soft Chroma `where` filter.
  *
- * Positional mapping (per SPEC-context-aware-retrieval, Story 2):
+ * Positional mapping (per SPEC-metadata-alignment-v1, Story 2):
  *   segment[0] -> route
- *   segment[1] -> chapter
- *   segment[2] -> area
- *   segment[3] -> sub_area
+ *   segment[1] -> area
+ *   segment[2] -> sub_area
  *
+ * The `chapter` slot is removed — it did not fit RE2R's route/area model.
  * Deeper segments are dropped for v1. Missing segments are simply omitted
  * from the returned object (never written as empty strings).
  *
@@ -16,7 +16,6 @@
  */
 export interface ParsedHeadingPath {
   route?: string;
-  chapter?: string;
   area?: string;
   sub_area?: string;
 }
@@ -24,7 +23,7 @@ export interface ParsedHeadingPath {
 const SEPARATOR = " > ";
 const MAX_FIELD_LENGTH = 200;
 
-const FIELDS = ["route", "chapter", "area", "sub_area"] as const;
+const FIELDS = ["route", "area", "sub_area"] as const;
 
 function normalizeSegment(raw: string): string | undefined {
   const trimmed = raw.trim();

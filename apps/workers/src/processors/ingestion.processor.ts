@@ -53,14 +53,16 @@ export async function processIngestionJob(
       throw new IngestionError("empty_content", "Source has no content to process");
     }
 
-    // 2. Load and validate document
+    // 2. Load and validate document (frontmatter parsed and stripped by md.reader)
     const filename = source.sourceUri?.split(/[\\/]/).pop() ?? "content.md";
     const isHtml = /\.(html|htm)$/i.test(filename);
     const loaded = isHtml
       ? loadHtml(source.content, filename)
       : loadMarkdown(source.content, filename);
 
-    // 3. Clean — strip URLs, images, HTML tags, frontmatter noise
+    const { frontmatter } = loaded;
+
+    // 3. Clean — strip URLs, images, HTML tags
     const cleaned = cleanMarkdown(loaded.content);
 
     // 4. Chunk the content
@@ -94,15 +96,22 @@ export async function processIngestionJob(
         continue;
       }
 
-      // Classify chunk content
-      const { contentType, chapterNumber } = classifyChunk(
+      // Classify chunk content (frontmatter content_type wins; else classifier; else "general")
+      const { contentType: classifiedType, chapterNumber } = classifyChunk(
         chunk.headingPath,
         chunk.content
       );
+      const contentType = frontmatter.contentType ?? classifiedType;
+      const spoilerLevel = frontmatter.spoilerLevel ?? 0;
 
-      // Parse heading path into structured location metadata for soft filtering
-      // at retrieval time (SPEC-context-aware-retrieval, Story 2).
+      // Parse heading path into structured location metadata for soft filtering.
       const parsedHeading = parseHeadingPath(chunk.headingPath);
+
+      // When heading provides no area, fall back to frontmatter default_area.
+      const areaOverride: { area?: string } =
+        parsedHeading.area === undefined && frontmatter.defaultArea !== undefined
+          ? { area: frontmatter.defaultArea }
+          : {};
 
       // Generate embedding. We pass `embeddingInput` (heading prefix + body)
       // so retrieval recall keeps benefiting from the heading signal, while
@@ -119,21 +128,26 @@ export async function processIngestionJob(
 
       const vectorId = `${sourceId}-${i}-${randomUUID()}`;
 
+      const baseMetadata = {
+        source_id: sourceId,
+        document_id: "",
+        chunk_index: chunk.chunkIndex,
+        game_id: gameId,
+        heading_path: chunk.headingPath,
+        author,
+        ...parsedHeading,
+        ...areaOverride,
+        content_type: contentType,
+        spoiler_level: spoilerLevel,
+      };
+
       // Write to ChromaDB
       try {
         await upsertVectors([
           {
             id: vectorId,
             embedding,
-            metadata: {
-              source_id: sourceId,
-              document_id: "",
-              chunk_index: chunk.chunkIndex,
-              game_id: gameId,
-              heading_path: chunk.headingPath,
-              author,
-              ...parsedHeading,
-            },
+            metadata: baseMetadata,
             document: chunk.content,
           },
         ]);
@@ -162,27 +176,21 @@ export async function processIngestionJob(
         metadata: {
           headingPath: chunk.headingPath,
           contentType,
+          spoilerLevel,
           chapterNumber,
           author,
         },
         tokens: chunk.tokens,
       });
 
-      // Back-fill document_id in Chroma metadata (best-effort, non-fatal)
+      // Back-fill document_id in Chroma metadata (best-effort, non-fatal).
+      // Carries forward content_type, spoiler_level to avoid losing them.
       try {
         await upsertVectors([
           {
             id: vectorId,
             embedding,
-            metadata: {
-              source_id: sourceId,
-              document_id: doc._id.toString(),
-              chunk_index: chunk.chunkIndex,
-              game_id: gameId,
-              heading_path: chunk.headingPath,
-              author,
-              ...parsedHeading,
-            },
+            metadata: { ...baseMetadata, document_id: doc._id.toString() },
             document: chunk.content,
           },
         ]);
