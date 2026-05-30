@@ -6,6 +6,55 @@ All notable changes to SecondSeat are documented here. Format loosely follows [K
 
 ## Unreleased
 
+### Changed (metadata-alignment-v1 — in progress)
+
+- **Workers / Heading parser:** `ParsedHeadingPath` drops the `chapter` slot; positional map is now `route → area → sub_area` (3 fields, down from 4). All existing callers that spread `parsedHeading` into Chroma metadata receive the new shape automatically.
+- **Workers / Chroma metadata:** `VectorRecord.metadata` removes `chapter?` and adds required `content_type: string` and `spoiler_level: number`. Every ingested chunk now carries explicit classification and spoiler signal.
+- **Workers / Ingestion processor:** `content_type` and `spoiler_level` are written to every Chroma vector and to `RagDocument.metadata`. Frontmatter wins; `classifyChunk` result is the fallback for `content_type`; `0` is the fallback for `spoiler_level`. The back-fill upsert now carries all metadata fields (previously lost `content_type`/`spoiler_level` on the second write).
+- **Workers / Markdown reader:** `loadMarkdown` now strips the frontmatter block before returning the body and before the heading-presence check. `LoadedDocument` adds a `frontmatter: ParsedFrontmatter` field.
+- **Workers / HTML reader:** `loadHtml` imports `LoadedDocument` from `md.reader` (removed duplicate definition) and returns `frontmatter: {}` — HTML sources have no v1 frontmatter contract.
+- **Inference / Generate schema:** `chapter` made optional (`z.string().min(1).max(100).optional()`). Callers that omit `chapter` now pass validation.
+- **Inference / Generate route:** When `chapter` is absent in the request, `chapter: ""` is written to the `RunContext` document to satisfy the existing Mongoose `required: true` constraint without a schema migration.
+- **Inference / Retrieval service:** `RetrievalRunContext.chapter` typed as `string | undefined`. `buildEnrichedQuery` already filters falsy values; `buildLocationOrClause` already guards `if (ctx.chapter)` — both are verified, not modified.
+- **Inference / Retrieval service:** `projectChromaResult` derives `spoiler: boolean` from `spoiler_level >= 2` instead of the dead `meta.spoiler === true` check (which was always false because ingestion never wrote `spoiler`).
+- **Inference / Prompt template:** `formatRunContext` omits the `Chapter:` line when `ctx.chapter` is absent or empty.
+
+### Added (metadata-alignment-v1 — in progress)
+
+- **Workers / Frontmatter parser:** New `apps/workers/src/services/load/frontmatter.parser.ts` — hand-rolled `key: value` parser (no `js-yaml` / `gray-matter` dep). Validates `content_type`, `spoiler_level`, and `default_area` via Zod. Invalid values are logged at `warn` and dropped; ingest continues with the remaining valid fields.
+- **Workers / Demo corpus:** `docs/ingestion-docs/leon-a-map.md` (renamed from `map.md`), `birkin-g1-knife.md`, `birkin-g1-run-gun.md`, `core-progression.md` — all carry frontmatter blocks (`content_type`, `spoiler_level`). `enemies-strategies.md` and `game-guide.md` are excluded from v1 ingest (area-slot semantics deferred; `enemy_reference` vocab entry added to union anyway).
+- **Workers / `ChunkContentType`:** Added `"enemy_reference"` member. Reachable only via frontmatter override in v1; no heading-classifier rule for it.
+
+### Files (metadata-alignment-v1 — workers side, committed)
+
+- Modified: `apps/workers/src/services/chunk/heading-path.parser.ts`
+- Modified: `apps/workers/src/services/chunk/heading-path.parser.test.ts`
+- Modified: `apps/workers/src/services/classify/chunk-classifier.ts`
+- Modified: `apps/workers/src/services/vector/chroma.client.ts`
+- Added:    `apps/workers/src/services/load/frontmatter.parser.ts`
+- Added:    `apps/workers/src/services/load/frontmatter.parser.test.ts`
+- Modified: `apps/workers/src/services/load/md.reader.ts`
+- Modified: `apps/workers/src/services/load/html.reader.ts`
+- Modified: `apps/workers/src/processors/ingestion.processor.ts`
+- Added:    `docs/ingestion-docs/leon-a-map.md` (renamed from `map.md`)
+- Added:    `docs/ingestion-docs/birkin-g1-knife.md`
+- Added:    `docs/ingestion-docs/birkin-g1-run-gun.md`
+- Added:    `docs/ingestion-docs/core-progression.md`
+
+### Files (metadata-alignment-v1 — inference side, pending gate)
+
+- Modified: `apps/inference/src/schemas/generate.schema.ts`
+- Modified: `apps/inference/src/routes/generate.route.ts`
+- Modified: `apps/inference/src/services/retrieval/retrieval.service.ts`
+- Modified: `apps/inference/src/services/prompt/prompt-template.ts`
+
+### Notes
+
+- **Manual re-ingest required:** After both sides land, the operator must delete and re-upload the 4 demo corpus docs via the web UI at `/ingest` to flush legacy Chroma vectors that carry the old `chapter` metadata key.
+- **`packages/db/src/` not modified:** `RunContext.chapter` stays `required: true`; the workaround (`chapter: ""` on omitted requests) is intentional and documented as a post-MVP follow-up.
+
+---
+
 ### Changed
 
 - **DB / Schema:** Removed the unique compound index `{ "metadata.game": 1, "metadata.author": 1 }` from `ragSourceSchema`. An author can now submit multiple guide sources for the same game. The index is dropped entirely (no replacement) — per-game query optimization is deferred.

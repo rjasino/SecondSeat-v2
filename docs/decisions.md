@@ -4,6 +4,60 @@ Architecture and product decisions for SecondSeat, in reverse chronological orde
 
 ---
 
+## 2026-05-30 — Metadata Alignment v1: Drop Chapter Slot, Lift Content Type + Spoiler Level via Frontmatter
+
+**Context**
+Three separate problems were discovered when auditing the ingestion ↔ retrieval contract before the 2026-06-01 demo:
+
+1. The positional heading parser maps `segment[1] → chapter`, but Resident Evil 2 Remake has no chapter structure — it organises content by route / area / sub-area. This means every ingest document needed a synthetic `## Chapter` H2 wrapper to prevent the parser swallowing the real area into the wrong slot.
+2. `content_type` and `spoiler_level` were classified by fragile heading-text regex at ingest time and never written to Chroma. The `[SPOILER — do not reference]` label in `prompt-template.ts` was dead code because `projectChromaResult` read `meta.spoiler` (a boolean never written by ingest) and therefore set `spoiler: false` on every chunk.
+3. The `chapter` field on `POST /api/v1/generate` was required, forcing players to supply a value that has no meaning in the current game.
+
+**Decision**
+
+- **Drop the `chapter` positional slot from the heading parser.** New mapping: `segment[0] → route`, `segment[1] → area`, `segment[2] → sub_area`. The existing overflow behaviour (deeper segments dropped) is preserved.
+- **Introduce authored YAML frontmatter for `content_type`, `spoiler_level`, and `default_area`.** A hand-rolled `key: value` parser (no `js-yaml` / `gray-matter` dependency) extracts these at load time. Zod validates each field individually; invalid values are warned and dropped without failing the ingest job.
+- **Frontmatter wins over heading-text classification.** Merge priority: frontmatter > `classifyChunk` result > `"general"` for `content_type`; frontmatter > `0` for `spoiler_level`. `default_area` fills the `area` Chroma slot only when the heading parser provides no area — heading always wins.
+- **Make `chapter` optional in `POST /api/v1/generate`.** Zod schema: `.optional()`. Route writes `chapter: ""` to `RunContext` when absent — this is an explicit workaround to avoid modifying `packages/db/src/` (which would require a separate decision-lane entry). The Mongoose `required: true` constraint on `RunContext.chapter` is intentionally left in place; the post-MVP follow-up is to loosen it.
+- **Fix `projectChromaResult` to derive `spoiler` from `spoiler_level >= 2`.** The legacy `meta.spoiler === true` dead-code path is removed.
+- **Add `enemy_reference` to `ChunkContentType`.** Locks in the vocab name for enemy strategy docs. Reachable via frontmatter only in v1 (no heading-classifier rule). `enemies-strategies.md` is deferred from the v1 demo corpus.
+- **`packages/db/src/` is NOT modified.** The `chapter` field workaround keeps this spec in the inference-level gate rather than requiring a database schema migration.
+
+**Alternatives considered**
+
+- **Reshape documents to fit the existing 4-slot parser (route/chapter/area/sub_area).** Rejected — requires adding a synthetic `## Chapter` H2 to every document, which is noise that confuses the heading hierarchy. The parser should match the game's actual structure, not the reverse.
+- **Classify `content_type` and `spoiler_level` via ML or LLM at ingest time.** Rejected — introduces a new external dependency and latency in the ingestion pipeline. Author-declared frontmatter is authoritative for v1 (one game, six docs); regex classifier remains as the fallback for documents without frontmatter.
+- **Use `js-yaml` or `gray-matter` for frontmatter parsing.** Rejected — adds a dependency for a grammar that is intentionally limited to `key: value` lines only. The hand-rolled parser is 50 lines and auditable; complex YAML features (nested keys, arrays, multi-line strings) are explicitly out-of-scope for v1.
+- **Add `spoiler_level` to `RetrievedChunk` and surface it to the prompt template.** Discussed 2026-05-30. Rejected for v1 — the only consumer is the `spoiler: boolean` check, and `spoiler_level >= 2` captures the intended threshold. Adding the numeric field to the projected chunk would complicate the prompt assembler without benefit until finer-grained spoiler policy is needed.
+- **Loosen `RunContext.chapter` to `required: false` in Mongoose.** Rejected for this spec — changing `packages/db/src/` would elevate to a combined inference + DB decision and require a migration script. The `""` workaround is a deliberate and documented trade-off to keep the blast radius narrow.
+
+**Consequences**
+
+- After this lands, every new ingest vector carries explicit `content_type` and `spoiler_level` metadata. Legacy vectors from prior ingest do not — they are flushed by the operator re-ingest (Story 6, manual step).
+- The `[SPOILER — do not reference]` label in `prompt-template.ts` is now reachable for any chunk with `spoiler_level >= 2`. The `HINT_POLICY` rule #4 is enforceable from this point forward.
+- Players no longer need to supply `chapter` for the RE2R game. Any future game with a real chapter structure can still pass `chapter` without behaviour change.
+- `chapter` key on Chroma vectors written before this deploy is dead weight until re-ingest. The retrieval `$or` clause no longer references it so there is no correctness impact.
+- **Post-MVP follow-up (logged):** Loosen `RunContext.chapter` to `required: false` in Mongoose (decision lane, `packages/db/src/`). Until then, empty-string writes are the workaround.
+
+**Files**
+
+Workers side (committed in `rjasino-fs/metadata` branch prior to this log entry):
+- Modified: `apps/workers/src/services/chunk/heading-path.parser.ts`
+- Modified: `apps/workers/src/services/classify/chunk-classifier.ts`
+- Modified: `apps/workers/src/services/vector/chroma.client.ts`
+- Added:    `apps/workers/src/services/load/frontmatter.parser.ts`
+- Modified: `apps/workers/src/services/load/md.reader.ts`
+- Modified: `apps/workers/src/services/load/html.reader.ts`
+- Modified: `apps/workers/src/processors/ingestion.processor.ts`
+
+Inference side (pending, gated by this `/log`):
+- Modified: `apps/inference/src/schemas/generate.schema.ts`
+- Modified: `apps/inference/src/routes/generate.route.ts`
+- Modified: `apps/inference/src/services/retrieval/retrieval.service.ts`
+- Modified: `apps/inference/src/services/prompt/prompt-template.ts`
+
+---
+
 ## 2026-05-30 — Remove Unique-Per-Author Constraint on RagSource game+author Index
 
 **Context**

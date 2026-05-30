@@ -266,4 +266,22 @@ describe("POST /api/v1/generate", () => {
     expect(res.body).toMatch(/"refused":true/);
     expect(res.body).toMatch(/insufficient_context/);
   });
+
+  it("accepts a valid request body without chapter and streams SSE successfully", async () => {
+    const { chapter: _chapter, ...noChapter } = VALID_BODY;
+    const res = await request(app)
+      .post("/api/v1/generate")
+      .set(AUTH_HEADERS)
+      .send(noChapter)
+      .buffer(true)
+      .parse((res, callback) => {
+        let data = "";
+        res.on("data", (chunk: Buffer) => { data += chunk.toString(); });
+        res.on("end", () => callback(null, data));
+      });
+
+    expect(res.headers["content-type"]).toMatch(/text\/event-stream/);
+    expect(res.body).toContain("event: done");
+    expect(res.body).not.toContain('"error"');
+  });
 });

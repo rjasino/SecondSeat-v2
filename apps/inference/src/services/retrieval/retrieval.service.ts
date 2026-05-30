@@ -21,7 +21,7 @@ export interface RetrievedChunk {
  */
 export interface RetrievalRunContext {
   gameArea: string;
-  chapter: string;
+  chapter?: string;
   subArea?: string;
   playerGoal: string;
 }
@@ -108,7 +108,7 @@ function projectChromaResult(result: ChromaQueryResult): RetrievedChunk[] {
 
     const cosineSimilarity = 1 - (l2Distance * l2Distance) / 2;
     const meta = metadatas[i] ?? {};
-    const rawSpoiler = (meta as Record<string, unknown>)["spoiler"];
+    const spoilerLevel = Number((meta as Record<string, unknown>)["spoiler_level"] ?? 0);
 
     chunks.push({
       id: ids[i] ?? "",
@@ -118,7 +118,7 @@ function projectChromaResult(result: ChromaQueryResult): RetrievedChunk[] {
       headingPath: String((meta as Record<string, unknown>)["heading_path"] ?? ""),
       content: documents[i] ?? "",
       similarityScore: Math.max(0, Math.min(1, cosineSimilarity)),
-      spoiler: rawSpoiler === true,
+      spoiler: spoilerLevel >= 2,
     });
   }
 
@@ -182,7 +182,7 @@ export async function retrieveChunks(
   if (chunks.length === 0) {
     if (locationClause) {
       console.log(
-        `[retrieval] area_filter_miss game=${gameId} chapter=${runContext.chapter} area=${runContext.gameArea} sub_area=${runContext.subArea ?? ""}`
+        `[retrieval] area_filter_miss game=${gameId} chapter=${runContext.chapter ?? ""} area=${runContext.gameArea} sub_area=${runContext.subArea ?? ""}`
       );
     }
     const fallbackResult = await collection.query({

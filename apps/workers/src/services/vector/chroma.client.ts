@@ -11,12 +11,15 @@ export interface VectorRecord {
     game_id: string;
     heading_path: string;
     author: string;
-    // Optional structured location fields parsed from heading_path at ingest.
-    // Used by inference as a soft Chroma `where` filter (SPEC-context-aware-retrieval).
+    // Structured location fields parsed from heading_path at ingest.
+    // Used by inference as a soft Chroma `where` filter.
     route?: string;
-    chapter?: string;
     area?: string;
     sub_area?: string;
+    // Content classification — frontmatter wins; else classifier; else "general".
+    content_type: string;
+    // Spoiler level 0–3 — frontmatter wins; else 0. Retrieval sets spoiler: true when >= 2.
+    spoiler_level: number;
   };
   document: string;
 }

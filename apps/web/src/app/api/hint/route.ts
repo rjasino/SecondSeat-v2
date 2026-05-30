@@ -10,7 +10,7 @@ const hintRequestSchema = z.object({
   runContextId: z.string().regex(objectIdRegex, "Must be a valid MongoDB ObjectId"),
   gameId: z.string().regex(objectIdRegex, "Must be a valid MongoDB ObjectId"),
   gameArea: z.string().min(1).max(100),
-  chapter: z.string().min(1).max(100),
+  chapter: z.string().min(1).max(100).optional(),
   subArea: z.string().min(1).max(100).optional(),
   playerGoal: z.enum(["progression", "exploration", "confirmation", "completion"]),
   confidenceLevel: z.enum(["confident", "uncertain", "stuck"]),

@@ -35,8 +35,8 @@ export interface PromptSlots {
   retrievedChunks: RetrievedChunk[];
   runContext: Pick<
     GenerateRequest,
-    "gameArea" | "chapter" | "subArea" | "playerGoal" | "confidenceLevel"
-  >;
+    "gameArea" | "subArea" | "playerGoal" | "confidenceLevel"
+  > & { chapter?: string };
   game: PromptGame;
   profile: PromptProfile;
   preferences: PromptPreferences;
@@ -59,7 +59,7 @@ function formatChunks(chunks: RetrievedChunk[]): string {
 function formatRunContext(ctx: PromptSlots["runContext"]): string {
   const parts = [
     `Area: ${ctx.gameArea}`,
-    `Chapter: ${ctx.chapter}`,
+    ctx.chapter ? `Chapter: ${ctx.chapter}` : null,
     ctx.subArea ? `Sub-area: ${ctx.subArea}` : null,
     `Goal: ${ctx.playerGoal}`,
     `Confidence: ${ctx.confidenceLevel}`,

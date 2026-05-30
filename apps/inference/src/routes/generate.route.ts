@@ -143,7 +143,7 @@ generateRouter.post(
     try {
       chunks = await retrieveChunks(body.text, body.gameId, {
         gameArea: body.gameArea,
-        chapter: body.chapter,
+        chapter: body.chapter, // optional — undefined when omitted; downstream filters handle it
         subArea: body.subArea,
         playerGoal: body.playerGoal,
       });
@@ -248,7 +248,7 @@ generateRouter.post(
       retrievedChunks: chunks,
       runContext: {
         gameArea: body.gameArea,
-        chapter: body.chapter,
+        chapter: body.chapter, // optional; formatRunContext omits the Chapter: line when absent
         subArea: body.subArea,
         playerGoal: body.playerGoal,
         confidenceLevel: body.confidenceLevel,

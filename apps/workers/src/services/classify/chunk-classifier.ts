@@ -2,6 +2,7 @@ export type ChunkContentType =
   | "full_walkthrough"
   | "area_guide"
   | "boss_guide"
+  | "enemy_reference"
   | "side_quest_guide"
   | "collectibles_guide"
   | "tips_and_tricks"

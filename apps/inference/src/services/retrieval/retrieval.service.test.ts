@@ -92,6 +92,13 @@ describe("buildEnrichedQuery", () => {
     const ctx = { ...RC, playerGoal: "completion" };
     expect(buildEnrichedQuery("G", ctx, "q")).toContain("goal:completion");
   });
+
+  it("omits chapter when undefined — no empty token", () => {
+    const { chapter: _chapter, ...noChapter } = RC;
+    expect(buildEnrichedQuery("RE2R", noChapter, "q")).toBe(
+      "RE2R | RPD | Sewer | goal:progression | q"
+    );
+  });
 });
 
 describe("retrieveChunks", () => {
@@ -150,6 +157,31 @@ describe("retrieveChunks", () => {
                 { sub_area: "sewer" },
               ],
             },
+          ],
+        },
+      })
+    );
+  });
+
+  it("omits chapter from the $or clause when chapter is undefined", async () => {
+    mockQuery.mockResolvedValue({
+      ids: [["v"]],
+      distances: [[0.5]],
+      metadatas: [
+        [{ source_id: "s", document_id: "d", chunk_index: 0, heading_path: "X" }],
+      ],
+      documents: [["content"]],
+    });
+    const { chapter: _chapter, ...noChapter } = RC;
+
+    await retrieveChunks("q", "game-1", noChapter);
+
+    expect(mockQuery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          $and: [
+            { game_id: "game-1" },
+            { $or: [{ area: "rpd" }, { sub_area: "sewer" }] },
           ],
         },
       })
@@ -250,22 +282,38 @@ describe("retrieveChunks", () => {
     expect(chunks).toHaveLength(0);
   });
 
-  it("flags chunks with metadata.spoiler === true and defaults missing to false", async () => {
+  it("sets spoiler:true when spoiler_level >= 2", async () => {
     mockQuery.mockResolvedValue({
-      ids: [["v1", "v2"]],
-      distances: [[0.5, 0.5]],
+      ids: [["v1", "v2", "v3"]],
+      distances: [[0.5, 0.5, 0.5]],
       metadatas: [
         [
-          { source_id: "s", document_id: "d", chunk_index: 0, heading_path: "A", spoiler: true },
-          { source_id: "s", document_id: "d", chunk_index: 1, heading_path: "B" }, // no spoiler key
+          { source_id: "s", document_id: "d", chunk_index: 0, heading_path: "A", spoiler_level: 2 },
+          { source_id: "s", document_id: "d", chunk_index: 1, heading_path: "B", spoiler_level: 3 },
+          { source_id: "s", document_id: "d", chunk_index: 2, heading_path: "C", spoiler_level: 1 },
         ],
       ],
-      documents: [["spoiler content", "safe content"]],
+      documents: [["c1", "c2", "c3"]],
     });
 
     const chunks = await retrieveChunks("q", "game-1", RC);
-    expect(chunks[0]?.spoiler).toBe(true);
-    expect(chunks[1]?.spoiler).toBe(false);
+    expect(chunks[0]?.spoiler).toBe(true);  // level 2 → spoiler
+    expect(chunks[1]?.spoiler).toBe(true);  // level 3 → spoiler
+    expect(chunks[2]?.spoiler).toBe(false); // level 1 → not spoiler
+  });
+
+  it("defaults spoiler:false when spoiler_level is absent (legacy vector)", async () => {
+    mockQuery.mockResolvedValue({
+      ids: [["v1"]],
+      distances: [[0.5]],
+      metadatas: [
+        [{ source_id: "s", document_id: "d", chunk_index: 0, heading_path: "A" }],
+      ],
+      documents: [["content"]],
+    });
+
+    const chunks = await retrieveChunks("q", "game-1", RC);
+    expect(chunks[0]?.spoiler).toBe(false);
   });
 
   it("includes filter=hit|miss|none in the summary log line", async () => {
