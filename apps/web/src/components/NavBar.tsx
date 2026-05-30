@@ -68,10 +68,10 @@ export default async function NavBar() {
               Ingestion
             </Link>
           )}
-          {displayName && (
-            <span style={{ color: "var(--text-muted)", fontSize: "13px" }}>
-              {displayName}
-            </span>
+          {!isPrivileged && (
+            <Link href="/dashboard/play" style={{ fontSize: "13px" }}>
+              Play
+            </Link>
           )}
           {roleLabel && (
             <span

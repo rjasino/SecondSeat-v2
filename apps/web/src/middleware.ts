@@ -45,19 +45,26 @@ export async function middleware(req: NextRequest): Promise<NextResponse> {
   if (pathname === "/login" || pathname === "/register") {
     if (session) {
       const dest =
-        session.role === "user" ? "/" : "/dashboard/ingest";
+        session.role === "user" ? "/dashboard/play" : "/dashboard/ingest";
       return NextResponse.redirect(new URL(dest, req.url));
     }
     return NextResponse.next();
   }
 
-  // Privileged routes: /dashboard/** (UI) and /api/ingest/** (API)
+  // /dashboard/play: any authenticated user
+  if (pathname.startsWith("/dashboard/play")) {
+    if (!session) {
+      return NextResponse.redirect(new URL("/login", req.url));
+    }
+    return NextResponse.next();
+  }
+
+  // Privileged routes: /dashboard/** (UI) and /api/ingest/** (API) — admin/author only
   if (
     pathname.startsWith("/dashboard") ||
     pathname.startsWith("/api/ingest")
   ) {
     if (!session) {
-      // Unauthenticated — API gets JSON 401, UI gets redirect to /login
       if (pathname.startsWith("/api/")) {
         return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
       }
@@ -65,7 +72,6 @@ export async function middleware(req: NextRequest): Promise<NextResponse> {
     }
 
     if (session.role === "user") {
-      // Authenticated but insufficient role — API gets JSON 403, UI gets redirect to /
       if (pathname.startsWith("/api/")) {
         return NextResponse.json({ error: "forbidden" }, { status: 403 });
       }

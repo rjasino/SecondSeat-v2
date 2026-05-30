@@ -15,16 +15,7 @@ export default async function DashboardLayout({
     redirect("/login");
   }
 
-  if (session.role !== "admin" && session.role !== "author") {
-    return (
-      <div style={{ padding: "4rem 2rem", textAlign: "center" }}>
-        <h1 style={{ fontSize: "18px", marginBottom: "8px" }}>403 Forbidden</h1>
-        <p style={{ color: "var(--text-muted)" }}>
-          You do not have permission to access this area.
-        </p>
-      </div>
-    );
-  }
+  const canIngest = session.role === "admin" || session.role === "author";
 
   return (
     <div>
@@ -56,9 +47,11 @@ export default async function DashboardLayout({
             style={{ height: "75px", width: "auto" }}
           />
         </Link>
-        <Link href="/dashboard/ingest" style={{ fontSize: "13px" }}>
-          Ingestion
-        </Link>
+        {canIngest && (
+          <Link href="/dashboard/ingest" style={{ fontSize: "13px" }}>
+            Ingestion
+          </Link>
+        )}
         <Link href="/dashboard/play" style={{ fontSize: "13px" }}>
           Play
         </Link>
@@ -72,7 +65,7 @@ export default async function DashboardLayout({
             className="ghost"
             style={{ fontSize: "12px", padding: "4px 10px" }}
           >
-            Sign out
+            Logout
           </button>
         </form>
       </nav>

@@ -3,8 +3,8 @@ import { getSession } from "@/lib/session";
 
 export const runtime = "nodejs";
 
-export async function POST(): Promise<NextResponse> {
+export async function POST(req: Request): Promise<NextResponse> {
   const session = await getSession();
   session.destroy();
-  return NextResponse.json({ ok: true });
+  return NextResponse.redirect(new URL("/", req.url));
 }
