@@ -4,6 +4,7 @@ import path from "path";
 import { fileTypeFromBuffer } from "file-type";
 import { connectDB } from "@/lib/db";
 import { RagSourceModel } from "@/models/rag-source.model";
+import { UserModel } from "@/models/user.model";
 import { getSession } from "@/lib/session";
 import { config } from "@/lib/config";
 import {
@@ -34,7 +35,6 @@ export async function POST(req: Request): Promise<NextResponse> {
   const metaParsed = uploadMetaSchema.safeParse({
     game: formData.get("game"),
     guideType: formData.get("guideType"),
-    author: formData.get("author"),
   });
   if (!metaParsed.success) {
     return NextResponse.json(
@@ -42,7 +42,7 @@ export async function POST(req: Request): Promise<NextResponse> {
       { status: 422 }
     );
   }
-  const { game, guideType, author } = metaParsed.data;
+  const { game, guideType } = metaParsed.data;
 
   const file = formData.get("file");
   if (!(file instanceof File)) {
@@ -81,6 +81,9 @@ export async function POST(req: Request): Promise<NextResponse> {
   }
 
   await connectDB();
+
+  const user = await UserModel.findById(session.userId).lean();
+  const author = user?.name ?? session.userId;
 
   const ragSource = await RagSourceModel.create({
     title: file.name.replace(/\.[^.]+$/, ""),

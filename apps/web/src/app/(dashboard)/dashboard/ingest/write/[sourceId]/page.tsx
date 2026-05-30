@@ -31,7 +31,6 @@ export default async function EditDraftPage({ params }: Props) {
       initialTitle={source.title}
       initialGame={typeof meta?.game === "string" ? meta.game : ""}
       initialGuideType={typeof meta?.guideType === "string" ? meta.guideType : ""}
-      initialAuthor={typeof meta?.author === "string" ? meta.author : ""}
       initialContent={source.content ?? ""}
     />
   );

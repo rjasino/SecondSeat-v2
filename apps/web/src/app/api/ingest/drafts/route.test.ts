@@ -15,19 +15,27 @@ vi.mock("@/models/rag-source.model", () => ({
   },
 }));
 
+vi.mock("@/models/user.model", () => ({
+  UserModel: {
+    findById: vi.fn(),
+  },
+}));
+
 import { POST } from "./route";
 import { getSession } from "@/lib/session";
 import { RagSourceModel } from "@/models/rag-source.model";
+import { UserModel } from "@/models/user.model";
 
 const mockSourceDoc = {
   _id: { toString: () => "new-source-id" },
 };
 
+const mockUser = { name: "Arohbi" };
+
 const validBody = {
   title: "Elden Ring Boss Guide",
   game: "Elden Ring",
   guideType: "boss_guide",
-  author: "Fextralife",
   content: "## Margit\n\nWatch out for the hammer.",
 };
 
@@ -42,6 +50,9 @@ function makeRequest(body: unknown): Request {
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(RagSourceModel.create).mockResolvedValue(mockSourceDoc as never);
+  vi.mocked(UserModel.findById).mockReturnValue({
+    lean: vi.fn().mockResolvedValue(mockUser),
+  } as never);
 });
 
 describe("POST /api/ingest/drafts", () => {
@@ -80,16 +91,6 @@ describe("POST /api/ingest/drafts", () => {
     expect(res.status).toBe(422);
   });
 
-  it("returns 422 when author is missing", async () => {
-    vi.mocked(getSession).mockResolvedValue({
-      userId: "admin-1",
-      role: "admin",
-    } as never);
-    const { author: _a, ...noAuthor } = validBody;
-    const res = await POST(makeRequest(noAuthor));
-    expect(res.status).toBe(422);
-  });
-
   it("returns 422 when guideType is an invalid value", async () => {
     vi.mocked(getSession).mockResolvedValue({
       userId: "admin-1",
@@ -101,14 +102,14 @@ describe("POST /api/ingest/drafts", () => {
     expect(res.status).toBe(422);
   });
 
-  it("creates a draft RagSource and returns 201 with sourceId", async () => {
+  it("creates a draft and sets author from the session user name", async () => {
     vi.mocked(getSession).mockResolvedValue({
       userId: "admin-1",
       role: "admin",
     } as never);
     const res = await POST(makeRequest(validBody));
     expect(res.status).toBe(201);
-    const body = await res.json() as { sourceId: string; status: string };
+    const body = (await res.json()) as { sourceId: string; status: string };
     expect(body.sourceId).toBe("new-source-id");
     expect(body.status).toBe("draft");
     expect(RagSourceModel.create).toHaveBeenCalledWith(
@@ -119,8 +120,40 @@ describe("POST /api/ingest/drafts", () => {
         metadata: expect.objectContaining({
           game: "Elden Ring",
           guideType: "boss_guide",
-          author: "Fextralife",
+          author: "Arohbi",
         }),
+      })
+    );
+  });
+
+  it("falls back to userId as author when user record is not found", async () => {
+    vi.mocked(getSession).mockResolvedValue({
+      userId: "admin-1",
+      role: "admin",
+    } as never);
+    vi.mocked(UserModel.findById).mockReturnValue({
+      lean: vi.fn().mockResolvedValue(null),
+    } as never);
+    await POST(makeRequest(validBody));
+    expect(RagSourceModel.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({ author: "admin-1" }),
+      })
+    );
+  });
+
+  it("returns 422 when author is passed in the body (field removed from schema)", async () => {
+    vi.mocked(getSession).mockResolvedValue({
+      userId: "admin-1",
+      role: "admin",
+    } as never);
+    // author is not a recognised field — Zod strips unknown keys by default,
+    // so the create should still succeed (author is ignored from body).
+    const res = await POST(makeRequest({ ...validBody, author: "ShouldBeIgnored" }));
+    expect(res.status).toBe(201);
+    expect(RagSourceModel.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({ author: "Arohbi" }),
       })
     );
   });

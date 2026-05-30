@@ -48,7 +48,6 @@ export default function IngestForm({ onUploaded }: Props) {
   const [games, setGames] = useState<GameOption[]>([]);
   const [game, setGame] = useState("");
   const [guideType, setGuideType] = useState("");
-  const [author, setAuthor] = useState("");
 
   useEffect(() => {
     fetch("/api/games")
@@ -65,7 +64,6 @@ export default function IngestForm({ onUploaded }: Props) {
     const errors: Record<string, string> = {};
     if (!game) errors["game"] = "Game is required.";
     if (!guideType) errors["guideType"] = "Guide type is required.";
-    if (!author.trim()) errors["author"] = "Author is required.";
     if (!fileRef.current?.files?.[0]) errors["file"] = "Please select a file.";
     setFieldErrors(errors);
     return Object.keys(errors).length === 0;
@@ -81,7 +79,6 @@ export default function IngestForm({ onUploaded }: Props) {
     const form = new FormData();
     form.append("game", game);
     form.append("guideType", guideType);
-    form.append("author", author.trim());
     form.append("file", file);
 
     setUploading(true);
@@ -94,7 +91,6 @@ export default function IngestForm({ onUploaded }: Props) {
         if (fileRef.current) fileRef.current.value = "";
         setGame("");
         setGuideType("");
-        setAuthor("");
         setFieldErrors({});
       } else {
         if (res.status === 409) {
@@ -170,29 +166,6 @@ export default function IngestForm({ onUploaded }: Props) {
         {fieldErrors["guideType"] && (
           <p className="error-msg" style={{ marginTop: "4px" }}>
             {fieldErrors["guideType"]}
-          </p>
-        )}
-      </div>
-
-      {/* Author */}
-      <div>
-        <label style={labelStyle}>
-          Author <span style={{ color: "var(--danger, #e53)" }}>*</span>
-        </label>
-        <input
-          type="text"
-          value={author}
-          maxLength={200}
-          placeholder="e.g. IGN, Fextralife, your username"
-          onChange={(e) => {
-            setAuthor(e.target.value);
-            setFieldErrors((fe) => ({ ...fe, author: "" }));
-          }}
-          style={inputStyle}
-        />
-        {fieldErrors["author"] && (
-          <p className="error-msg" style={{ marginTop: "4px" }}>
-            {fieldErrors["author"]}
           </p>
         )}
       </div>

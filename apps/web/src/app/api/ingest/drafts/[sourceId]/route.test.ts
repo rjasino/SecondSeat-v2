@@ -120,18 +120,29 @@ describe("PUT /api/ingest/drafts/[sourceId]", () => {
     expect(res.status).toBe(409);
   });
 
-  it("returns 200 and persists updates for a valid draft", async () => {
+  it("returns 200 and persists title and content updates for a valid draft", async () => {
     const res = await PUT(
-      makePutRequest({ title: "Updated Title", author: "NewAuthor" }),
+      makePutRequest({ title: "Updated Title", content: "New content here." }),
       makeParams("source-abc")
     );
     expect(res.status).toBe(200);
     expect(RagSourceModel.findByIdAndUpdate).toHaveBeenCalledWith(
       "source-abc",
       expect.objectContaining({
-        $set: expect.objectContaining({ title: "Updated Title", "metadata.author": "NewAuthor" }),
+        $set: expect.objectContaining({ title: "Updated Title" }),
       })
     );
+  });
+
+  it("does not update metadata.author even if passed in the body", async () => {
+    await PUT(
+      makePutRequest({ title: "T", author: "ShouldBeIgnored" }),
+      makeParams("source-abc")
+    );
+    const callArg = vi.mocked(RagSourceModel.findByIdAndUpdate).mock.calls[0]?.[1] as {
+      $set: Record<string, unknown>;
+    };
+    expect(callArg.$set).not.toHaveProperty("metadata.author");
   });
 
 });

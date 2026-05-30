@@ -53,7 +53,7 @@ export async function PUT(
     );
   }
 
-  const { title, game, guideType, author, content } = parsed.data;
+  const { title, game, guideType, content } = parsed.data;
 
   const charCount = content !== undefined ? content.length : (source.content?.length ?? 0);
   const wordCount = content !== undefined ? countWords(content) : 0;
@@ -65,7 +65,6 @@ export async function PUT(
   if (title !== undefined) updateFields["title"] = title;
   if (game !== undefined) updateFields["metadata.game"] = game;
   if (guideType !== undefined) updateFields["metadata.guideType"] = guideType;
-  if (author !== undefined) updateFields["metadata.author"] = author;
   if (content !== undefined) updateFields["content"] = content;
 
   await RagSourceModel.findByIdAndUpdate(sourceId, { $set: updateFields });
