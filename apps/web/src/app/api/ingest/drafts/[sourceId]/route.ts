@@ -4,8 +4,6 @@ import { RagSourceModel } from "@/models/rag-source.model";
 import { RagIngestionJobModel } from "@/models/rag-ingestion-job.model";
 import { getSession } from "@/lib/session";
 import { updateDraftSchema, draftSourceIdParamsSchema } from "@/lib/ingest/schemas";
-import { findDuplicateSource } from "@/lib/ingest/ingest.service";
-
 export const runtime = "nodejs";
 
 export async function PUT(
@@ -56,31 +54,6 @@ export async function PUT(
   }
 
   const { title, game, guideType, author, content } = parsed.data;
-
-  // Check game+author uniqueness if either is changing
-  const meta = source.metadata as Record<string, unknown> | undefined;
-  const effectiveGame =
-    game ?? (typeof meta?.["game"] === "string" ? meta["game"] : undefined);
-  const effectiveAuthor =
-    author ?? (typeof meta?.["author"] === "string" ? meta["author"] : undefined);
-
-  if (effectiveGame && effectiveAuthor) {
-    const existingSourceId = await findDuplicateSource(
-      effectiveGame,
-      effectiveAuthor,
-      sourceId
-    );
-    if (existingSourceId) {
-      return NextResponse.json(
-        {
-          error: "duplicate_source",
-          hint: "A source for this game and author already exists.",
-          existingSourceId,
-        },
-        { status: 409 }
-      );
-    }
-  }
 
   const charCount = content !== undefined ? content.length : (source.content?.length ?? 0);
   const wordCount = content !== undefined ? countWords(content) : 0;

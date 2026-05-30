@@ -46,18 +46,3 @@ export async function enqueueSourceForIngestion(
   return { jobId: jobDocId, queueJobUuid };
 }
 
-export async function findDuplicateSource(
-  game: string,
-  author: string,
-  excludeId?: string
-): Promise<string | null> {
-  const query: Record<string, unknown> = {
-    "metadata.game": game,
-    "metadata.author": author,
-  };
-  if (excludeId) {
-    query["_id"] = { $ne: excludeId };
-  }
-  const existing = await RagSourceModel.findOne(query).select("_id").lean();
-  return existing ? existing._id.toString() : null;
-}

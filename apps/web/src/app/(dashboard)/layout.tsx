@@ -23,10 +23,11 @@ export default async function DashboardLayout({
         style={{
           background: "var(--bg-surface)",
           borderBottom: "1px solid var(--border)",
-          padding: "8px 2rem",
+          padding: "0 2rem",
           display: "flex",
           alignItems: "center",
-          gap: "1rem",
+          gap: "1.25rem",
+          padding: "8px 2rem",
         }}
       >
         <Link
@@ -36,6 +37,8 @@ export default async function DashboardLayout({
             display: "inline-flex",
             alignItems: "center",
             marginRight: "auto",
+            opacity: 0.95,
+            transition: "opacity 0.15s",
           }}
         >
           <Image
@@ -47,14 +50,23 @@ export default async function DashboardLayout({
             style={{ height: "75px", width: "auto" }}
           />
         </Link>
+
         {canIngest && (
-          <Link href="/dashboard/ingest" style={{ fontSize: "13px" }}>
+          <Link
+            href="/dashboard/ingest"
+            style={{ fontSize: "13px", color: "var(--text-muted)", transition: "color 0.15s" }}
+          >
             Ingestion
           </Link>
         )}
-        <Link href="/dashboard/play" style={{ fontSize: "13px" }}>
+
+        <Link
+          href="/dashboard/play"
+          style={{ fontSize: "13px", color: "var(--text-muted)", transition: "color 0.15s" }}
+        >
           Play
         </Link>
+
         <form
           action="/api/auth/logout"
           method="POST"
@@ -63,12 +75,13 @@ export default async function DashboardLayout({
           <button
             type="submit"
             className="ghost"
-            style={{ fontSize: "12px", padding: "4px 10px" }}
+            style={{ fontSize: "12px", padding: "5px 12px" }}
           >
             Logout
           </button>
         </form>
       </nav>
+
       <main style={{ maxWidth: "1100px", margin: "0 auto", padding: "2rem" }}>
         {children}
       </main>

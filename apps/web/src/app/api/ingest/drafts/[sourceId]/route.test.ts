@@ -22,15 +22,10 @@ vi.mock("@/models/rag-ingestion-job.model", () => ({
   },
 }));
 
-vi.mock("@/lib/ingest/ingest.service", () => ({
-  findDuplicateSource: vi.fn().mockResolvedValue(null),
-}));
-
 import { DELETE, PUT } from "./route";
 import { getSession } from "@/lib/session";
 import { RagSourceModel } from "@/models/rag-source.model";
 import { RagIngestionJobModel } from "@/models/rag-ingestion-job.model";
-import { findDuplicateSource } from "@/lib/ingest/ingest.service";
 
 function makeParams(sourceId: string) {
   return { params: Promise.resolve({ sourceId }) };
@@ -67,7 +62,6 @@ beforeEach(() => {
   vi.mocked(getSession).mockResolvedValue(adminSession as never);
   vi.mocked(RagSourceModel.findById).mockResolvedValue(draftSource as never);
   vi.mocked(RagSourceModel.findByIdAndDelete).mockResolvedValue(null);
-  vi.mocked(findDuplicateSource).mockResolvedValue(null);
 });
 
 // ─── DELETE ──────────────────────────────────────────────────────────────────
@@ -140,27 +134,4 @@ describe("PUT /api/ingest/drafts/[sourceId]", () => {
     );
   });
 
-  it("returns 409 with existingSourceId when new game+author would conflict", async () => {
-    vi.mocked(findDuplicateSource).mockResolvedValue("conflicting-source-id");
-    const res = await PUT(
-      makePutRequest({ author: "ConflictingAuthor" }),
-      makeParams("source-abc")
-    );
-    expect(res.status).toBe(409);
-    const body = await res.json() as { error: string; existingSourceId: string };
-    expect(body.error).toBe("duplicate_source");
-    expect(body.existingSourceId).toBe("conflicting-source-id");
-  });
-
-  it("passes sourceId as excludeId to findDuplicateSource to avoid self-conflict", async () => {
-    await PUT(
-      makePutRequest({ author: "SameAuthor" }),
-      makeParams("source-abc")
-    );
-    expect(findDuplicateSource).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.any(String),
-      "source-abc"
-    );
-  });
 });

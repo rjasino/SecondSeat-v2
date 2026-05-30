@@ -31,15 +31,18 @@ export default async function NavBar() {
   const isPrivileged = session.role === "author" || session.role === "admin";
   const roleLabel = session.role ? (ROLE_LABELS[session.role] ?? null) : null;
 
+  void displayName;
+
   return (
     <nav
       style={{
         background: "var(--bg-surface)",
         borderBottom: "1px solid var(--border)",
-        padding: "8px 2rem",
+        padding: "0 2rem",
         display: "flex",
         alignItems: "center",
-        gap: "1rem",
+        gap: "1.25rem",
+        padding: "8px 2rem",
       }}
     >
       <Link
@@ -49,6 +52,8 @@ export default async function NavBar() {
           display: "inline-flex",
           alignItems: "center",
           marginRight: "auto",
+          opacity: 0.95,
+          transition: "opacity 0.15s",
         }}
       >
         <Image
@@ -64,12 +69,18 @@ export default async function NavBar() {
       {isLoggedIn ? (
         <>
           {isPrivileged && (
-            <Link href="/dashboard/ingest" style={{ fontSize: "13px" }}>
+            <Link
+              href="/dashboard/ingest"
+              style={{ fontSize: "13px", color: "var(--text-muted)", transition: "color 0.15s" }}
+            >
               Ingestion
             </Link>
           )}
           {!isPrivileged && (
-            <Link href="/dashboard/play" style={{ fontSize: "13px" }}>
+            <Link
+              href="/dashboard/play"
+              style={{ fontSize: "13px", color: "var(--text-muted)", transition: "color 0.15s" }}
+            >
               Play
             </Link>
           )}
@@ -85,12 +96,15 @@ export default async function NavBar() {
         </>
       ) : (
         <>
-          <Link href="/login" style={{ fontSize: "13px" }}>
+          <Link
+            href="/login"
+            style={{ fontSize: "13px", color: "var(--text-muted)", transition: "color 0.15s" }}
+          >
             Login
           </Link>
-          <Link href="/register" style={{ fontSize: "13px" }}>
+          <a href="/register" className="link-btn-primary" style={{ padding: "7px 16px", fontSize: "12px" }}>
             Register
-          </Link>
+          </a>
         </>
       )}
     </nav>

@@ -15,14 +15,9 @@ vi.mock("@/models/rag-source.model", () => ({
   },
 }));
 
-vi.mock("@/lib/ingest/ingest.service", () => ({
-  findDuplicateSource: vi.fn(),
-}));
-
 import { POST } from "./route";
 import { getSession } from "@/lib/session";
 import { RagSourceModel } from "@/models/rag-source.model";
-import { findDuplicateSource } from "@/lib/ingest/ingest.service";
 
 const mockSourceDoc = {
   _id: { toString: () => "new-source-id" },
@@ -47,7 +42,6 @@ function makeRequest(body: unknown): Request {
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(RagSourceModel.create).mockResolvedValue(mockSourceDoc as never);
-  vi.mocked(findDuplicateSource).mockResolvedValue(null);
 });
 
 describe("POST /api/ingest/drafts", () => {
@@ -107,19 +101,6 @@ describe("POST /api/ingest/drafts", () => {
     expect(res.status).toBe(422);
   });
 
-  it("returns 409 with existingSourceId when game+author already exists", async () => {
-    vi.mocked(getSession).mockResolvedValue({
-      userId: "admin-1",
-      role: "admin",
-    } as never);
-    vi.mocked(findDuplicateSource).mockResolvedValue("existing-source-id");
-    const res = await POST(makeRequest(validBody));
-    expect(res.status).toBe(409);
-    const body = await res.json() as { error: string; existingSourceId: string };
-    expect(body.error).toBe("duplicate_source");
-    expect(body.existingSourceId).toBe("existing-source-id");
-  });
-
   it("creates a draft RagSource and returns 201 with sourceId", async () => {
     vi.mocked(getSession).mockResolvedValue({
       userId: "admin-1",
@@ -142,15 +123,6 @@ describe("POST /api/ingest/drafts", () => {
         }),
       })
     );
-  });
-
-  it("calls findDuplicateSource with game and author before creating", async () => {
-    vi.mocked(getSession).mockResolvedValue({
-      userId: "admin-1",
-      role: "admin",
-    } as never);
-    await POST(makeRequest(validBody));
-    expect(findDuplicateSource).toHaveBeenCalledWith("Elden Ring", "Fextralife");
   });
 
   it("returns 400 when request body is not valid JSON", async () => {

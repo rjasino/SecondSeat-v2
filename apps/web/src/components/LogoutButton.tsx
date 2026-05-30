@@ -22,7 +22,7 @@ export default function LogoutButton() {
       onClick={handleLogout}
       disabled={loading}
       className="ghost"
-      style={{ fontSize: "13px", padding: "4px 10px" }}
+      style={{ fontSize: "12px", padding: "5px 12px" }}
     >
       {loading ? "Logging out…" : "Logout"}
     </button>
