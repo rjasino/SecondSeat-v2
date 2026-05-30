@@ -20,6 +20,15 @@ describe("generateSchema", () => {
     expect(result.success).toBe(true);
   });
 
+  it("accepts a request body without chapter (chapter is now optional)", () => {
+    const { chapter: _chapter, ...without } = validBody;
+    const result = generateSchema.safeParse(without);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.chapter).toBeUndefined();
+    }
+  });
+
   it("accepts an optional subArea field", () => {
     const result = generateSchema.safeParse({
       ...validBody,

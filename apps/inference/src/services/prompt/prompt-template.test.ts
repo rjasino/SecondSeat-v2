@@ -80,6 +80,17 @@ describe("buildPrompt", () => {
     expect(systemPrompt).toContain("progression");
   });
 
+  it("includes 'Chapter:' line when chapter is present", () => {
+    const { systemPrompt } = buildPrompt(baseSlots); // baseSlots has chapter: "Chapter 3"
+    expect(systemPrompt).toContain("Chapter: Chapter 3");
+  });
+
+  it("omits 'Chapter:' line when chapter is undefined", () => {
+    const { chapter: _chapter, ...noChapter } = baseSlots.runContext;
+    const { systemPrompt } = buildPrompt({ ...baseSlots, runContext: noChapter });
+    expect(systemPrompt).not.toContain("Chapter:");
+  });
+
   it("stubs the session memory slot as empty string and omits the section header", () => {
     const { systemPrompt } = buildPrompt({ ...baseSlots, sessionMemory: "" });
     expect(systemPrompt).not.toContain("SESSION HISTORY");
