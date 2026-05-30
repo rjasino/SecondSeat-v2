@@ -11,14 +11,31 @@ interface GameOption {
 // --- Types ---
 type PlayerGoal = "progression" | "exploration" | "confirmation" | "completion";
 type ConfidenceLevel = "confident" | "uncertain" | "stuck";
+type HintOutcome = "answered" | "redirected" | "refused";
+
+const SUBAREA_NONE = "none";
+
+interface SerializedRunContext {
+  id: string;
+  gameArea: string;
+  chapter?: string;
+  subArea: string;
+  playerGoal: PlayerGoal;
+  confidenceLevel: ConfidenceLevel;
+}
 
 interface SessionState {
   playSessionId: string;
   runContextId: string;
   gameId: string;
   gameTitle: string;
+}
+
+/** The editable run-context fields shown on the Request Screen. */
+interface ContextForm {
   gameArea: string;
-  chapter: string;
+  subArea: string;
+  noSubArea: boolean; // "No sub-area / whole area" → submits the "none" sentinel
   playerGoal: PlayerGoal;
   confidenceLevel: ConfidenceLevel;
 }
@@ -28,28 +45,13 @@ interface HintEntry {
   question: string;
   response: string;
   lineCount: number;
+  outcome: HintOutcome;
   refused: boolean;
   refusalReason: string | null;
 }
 
-interface SessionForm {
-  gameId: string;
-  gameArea: string;
-  chapter: string;
-  subArea: string;
-  playerGoal: PlayerGoal;
-  confidenceLevel: ConfidenceLevel;
-}
-
-interface HintForm {
-  text: string;
-  gameArea: string;
-  chapter: string;
-  subArea: string;
-}
-
 // --- Helpers ---
-function generateObjectId(): string {
+function clientId(): string {
   const bytes = new Uint8Array(12);
   crypto.getRandomValues(bytes);
   return Array.from(bytes)
@@ -57,7 +59,27 @@ function generateObjectId(): string {
     .join("");
 }
 
-// Shared label style matching the rest of the dashboard
+/** Derives the local ContextForm from a loaded run context. */
+function formFromContext(rc: SerializedRunContext): ContextForm {
+  const isNone = rc.subArea.trim().toLowerCase() === SUBAREA_NONE;
+  return {
+    gameArea: rc.gameArea === "Start" ? "" : rc.gameArea,
+    subArea: isNone ? "" : rc.subArea,
+    noSubArea: isNone,
+    playerGoal: rc.playerGoal,
+    confidenceLevel: rc.confidenceLevel,
+  };
+}
+
+const blankForm: ContextForm = {
+  gameArea: "",
+  subArea: "",
+  noSubArea: false,
+  playerGoal: "progression",
+  confidenceLevel: "uncertain",
+};
+
+// Shared styles matching the rest of the dashboard
 const labelStyle: React.CSSProperties = {
   display: "block",
   fontSize: "12px",
@@ -77,31 +99,24 @@ const rowStyle: React.CSSProperties = {
 export default function PlayClient() {
   const [games, setGames] = useState<GameOption[]>([]);
   const [session, setSession] = useState<SessionState | null>(null);
-  const [showForm, setShowForm] = useState(false);
+  const [showSetup, setShowSetup] = useState(false);
 
   useEffect(() => {
     fetch("/api/games")
       .then((r) => r.json() as Promise<GameOption[]>)
       .then(setGames)
-      .catch(() => { /* keep empty */ });
+      .catch(() => {
+        /* keep empty */
+      });
   }, []);
 
-  const [sessionForm, setSessionForm] = useState<SessionForm>({
-    gameId: "",
-    gameArea: "",
-    chapter: "",
-    subArea: "",
-    playerGoal: "progression",
-    confidenceLevel: "uncertain",
-  });
-  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+  const [setupGameId, setSetupGameId] = useState("");
+  const [setupBusy, setSetupBusy] = useState<"new" | "load" | null>(null);
+  const [setupError, setSetupError] = useState<string | null>(null);
 
-  const [hintForm, setHintForm] = useState<HintForm>({
-    text: "",
-    gameArea: "",
-    chapter: "",
-    subArea: "",
-  });
+  const [contextForm, setContextForm] = useState<ContextForm>(blankForm);
+  const [question, setQuestion] = useState("");
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
   const [streaming, setStreaming] = useState(false);
   const [currentTokens, setCurrentTokens] = useState("");
@@ -110,84 +125,155 @@ export default function PlayClient() {
 
   const abortRef = useRef<AbortController | null>(null);
 
-  // --- Session start ---
-  const handleStartSession = useCallback(() => {
-    const errors: Record<string, string> = {};
-    if (!sessionForm.gameId)
-      errors["gameId"] = "Please select a game.";
-    if (!sessionForm.gameArea.trim())
-      errors["gameArea"] = "Game Area is required.";
-    if (!sessionForm.chapter.trim())
-      errors["chapter"] = "Chapter is required.";
-    setFormErrors(errors);
-    if (Object.keys(errors).length > 0) return;
-
-    const selectedGame = games.find((g) => g.id === sessionForm.gameId);
-    setSession({
-      playSessionId: generateObjectId(),
-      runContextId: generateObjectId(),
-      gameId: sessionForm.gameId,
-      gameTitle: selectedGame?.title ?? sessionForm.gameId,
-      gameArea: sessionForm.gameArea.trim(),
-      chapter: sessionForm.chapter.trim(),
-      playerGoal: sessionForm.playerGoal,
-      confidenceLevel: sessionForm.confidenceLevel,
-    });
-    setHintForm({
-      text: "",
-      gameArea: sessionForm.gameArea.trim(),
-      chapter: sessionForm.chapter.trim(),
-      subArea: sessionForm.subArea.trim(),
-    });
+  const resetStreamState = useCallback(() => {
     setHistory([]);
     setCurrentTokens("");
     setStreamError(null);
-    setShowForm(false);
-  }, [sessionForm]);
+    setQuestion("");
+    setFormErrors({});
+  }, []);
+
+  // --- New run ---
+  const handleNewRun = useCallback(async () => {
+    if (!setupGameId) {
+      setSetupError("Please select a game.");
+      return;
+    }
+    setSetupBusy("new");
+    setSetupError(null);
+    try {
+      const res = await fetch("/api/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ gameId: setupGameId }),
+      });
+      if (!res.ok) {
+        setSetupError("Could not start a new run. Are you signed in?");
+        return;
+      }
+      const data = (await res.json()) as {
+        playSessionId: string;
+        runContext: SerializedRunContext;
+      };
+      const game = games.find((g) => g.id === setupGameId);
+      setSession({
+        playSessionId: data.playSessionId,
+        runContextId: data.runContext.id,
+        gameId: setupGameId,
+        gameTitle: game?.title ?? setupGameId,
+      });
+      setContextForm(blankForm); // new run opens blank — start of game
+      resetStreamState();
+      setShowSetup(false);
+    } catch {
+      setSetupError("Connection error — could not start a run.");
+    } finally {
+      setSetupBusy(null);
+    }
+  }, [setupGameId, games, resetStreamState]);
+
+  // --- Load run ---
+  const handleLoadRun = useCallback(async () => {
+    if (!setupGameId) {
+      setSetupError("Please select a game.");
+      return;
+    }
+    setSetupBusy("load");
+    setSetupError(null);
+    try {
+      const res = await fetch(
+        `/api/sessions/active?gameId=${encodeURIComponent(setupGameId)}`
+      );
+      if (res.status === 404) {
+        setSetupError("No active run for this game — start a new one.");
+        return;
+      }
+      if (!res.ok) {
+        setSetupError("Could not load your run.");
+        return;
+      }
+      const data = (await res.json()) as {
+        playSessionId: string;
+        runContext: SerializedRunContext;
+      };
+      const game = games.find((g) => g.id === setupGameId);
+      setSession({
+        playSessionId: data.playSessionId,
+        runContextId: data.runContext.id,
+        gameId: setupGameId,
+        gameTitle: game?.title ?? setupGameId,
+      });
+      setContextForm(formFromContext(data.runContext)); // prefilled, editable
+      resetStreamState();
+      setShowSetup(false);
+    } catch {
+      setSetupError("Connection error — could not load a run.");
+    } finally {
+      setSetupBusy(null);
+    }
+  }, [setupGameId, games, resetStreamState]);
 
   const handleNewSession = useCallback(() => {
     abortRef.current?.abort();
     setStreaming(false);
-    setCurrentTokens("");
-    setStreamError(null);
     setSession(null);
-    setHistory([]);
-    setSessionForm({
-      gameId: "",
-      gameArea: "",
-      chapter: "",
-      subArea: "",
-      playerGoal: "progression",
-      confidenceLevel: "uncertain",
-    });
-    setFormErrors({});
-    setShowForm(true);
-  }, []);
+    setSetupGameId("");
+    setSetupError(null);
+    resetStreamState();
+    setShowSetup(true);
+  }, [resetStreamState]);
+
+  /** The effective sub-area sent to the backend ("none" when toggled off). */
+  const effectiveSubArea = (f: ContextForm): string =>
+    f.noSubArea ? SUBAREA_NONE : f.subArea.trim();
 
   // --- Hint submit ---
   const handleSubmitHint = useCallback(async () => {
-    if (!session || streaming || !hintForm.text.trim()) return;
+    if (!session || streaming) return;
 
-    const question = hintForm.text.trim();
-    const gameArea = hintForm.gameArea.trim() || session.gameArea;
-    const chapter = hintForm.chapter.trim() || session.chapter;
+    const errors: Record<string, string> = {};
+    if (!contextForm.gameArea.trim()) errors["gameArea"] = "Area is required.";
+    if (!contextForm.noSubArea && !contextForm.subArea.trim())
+      errors["subArea"] = "Sub-area is required (or tick “No sub-area”).";
+    if (!question.trim()) errors["question"] = "Enter a question.";
+    setFormErrors(errors);
+    if (Object.keys(errors).length > 0) return;
 
-    const body: Record<string, unknown> = {
+    const text = question.trim();
+    const gameArea = contextForm.gameArea.trim();
+    const subArea = effectiveSubArea(contextForm);
+
+    // Persist the run context in place (best-effort — never block the hint).
+    try {
+      await fetch(`/api/run-context/${session.runContextId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          gameArea,
+          subArea,
+          playerGoal: contextForm.playerGoal,
+          confidenceLevel: contextForm.confidenceLevel,
+        }),
+      });
+    } catch {
+      console.warn("[play] run-context update failed — continuing to hint");
+    }
+
+    const body = {
       playSessionId: session.playSessionId,
       runContextId: session.runContextId,
       gameId: session.gameId,
       gameArea,
-      chapter,
-      playerGoal: session.playerGoal,
-      confidenceLevel: session.confidenceLevel,
-      text: question,
+      subArea,
+      playerGoal: contextForm.playerGoal,
+      confidenceLevel: contextForm.confidenceLevel,
+      text,
     };
-    if (hintForm.subArea.trim()) body.subArea = hintForm.subArea.trim();
 
     setStreaming(true);
     setCurrentTokens("");
     setStreamError(null);
-    setHintForm((p) => ({ ...p, text: "" }));
+    setQuestion("");
 
     const ctrl = new AbortController();
     abortRef.current = ctrl;
@@ -201,7 +287,9 @@ export default function PlayClient() {
       });
 
       if (!res.ok || !res.body) {
-        const err = (await res.json().catch(() => ({ error: "Request failed" }))) as Record<string, unknown>;
+        const err = (await res
+          .json()
+          .catch(() => ({ error: "Request failed" }))) as Record<string, unknown>;
         setStreamError(String(err.error ?? "Request failed"));
         setStreaming(false);
         return;
@@ -231,13 +319,31 @@ export default function PlayClient() {
 
               if (lastEvent === "done") {
                 const refused = payload.refused === true;
+                const outcome: HintOutcome =
+                  payload.outcome === "redirected" ||
+                  payload.outcome === "refused" ||
+                  payload.outcome === "answered"
+                    ? payload.outcome
+                    : refused
+                      ? "refused"
+                      : "answered";
                 const refusalReason =
-                  typeof payload.refusalReason === "string" ? payload.refusalReason : null;
+                  typeof payload.refusalReason === "string"
+                    ? payload.refusalReason
+                    : null;
                 const lineCount =
                   typeof payload.lineCount === "number" ? payload.lineCount : 1;
                 setHistory((prev) => [
                   ...prev,
-                  { id: generateObjectId(), question, response: accumulated, lineCount, refused, refusalReason },
+                  {
+                    id: clientId(),
+                    question: text,
+                    response: accumulated,
+                    lineCount,
+                    outcome,
+                    refused,
+                    refusalReason,
+                  },
                 ]);
                 setCurrentTokens("");
                 setStreaming(false);
@@ -245,14 +351,16 @@ export default function PlayClient() {
                 break loop;
               } else if (lastEvent === "error") {
                 setStreamError(
-                  typeof payload.message === "string" ? payload.message : "Hint generation failed."
+                  typeof payload.message === "string"
+                    ? payload.message
+                    : "Hint generation failed."
                 );
                 setStreaming(false);
                 lastEvent = "";
                 break loop;
               } else if (typeof payload.token === "string") {
                 accumulated += payload.token;
-                setCurrentTokens((prev) => prev + payload.token);
+                setCurrentTokens((prev) => prev + (payload.token as string));
               }
             } catch {
               // ignore malformed SSE lines
@@ -266,10 +374,10 @@ export default function PlayClient() {
       }
       setStreaming(false);
     }
-  }, [session, streaming, hintForm]);
+  }, [session, streaming, contextForm, question]);
 
-  // ---- No Session ----
-  if (!session && !showForm) {
+  // ---- No session, no setup ----
+  if (!session && !showSetup) {
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: "2rem" }}>
         <div>
@@ -277,16 +385,17 @@ export default function PlayClient() {
             Play
           </h1>
           <p style={{ color: "var(--text-muted)" }}>
-            Test the inference pipeline — send hint requests and stream responses in real time.
+            Ask SecondSeat for a situational nudge — tell it where you are, then what
+            you&apos;re stuck on.
           </p>
         </div>
         <div className="card" style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
           <p style={{ color: "var(--text-muted)", fontSize: "13px" }}>
-            No active session. Start one to begin querying the inference service.
+            No active run. Start one to begin asking for hints.
           </p>
           <div>
-            <button className="primary" onClick={() => setShowForm(true)}>
-              New Session
+            <button className="primary" onClick={() => setShowSetup(true)}>
+              Start
             </button>
           </div>
         </div>
@@ -294,8 +403,8 @@ export default function PlayClient() {
     );
   }
 
-  // ---- Session Form ----
-  if (showForm && !session) {
+  // ---- Setup: pick game → New run / Load run ----
+  if (showSetup && !session) {
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: "2rem" }}>
         <div>
@@ -303,25 +412,25 @@ export default function PlayClient() {
             Play
           </h1>
           <p style={{ color: "var(--text-muted)" }}>
-            Configure your session context before querying.
+            Pick the game you&apos;re playing, then start a fresh run or load your
+            current one.
           </p>
         </div>
 
         <div className="card">
           <h2 style={{ fontSize: "15px", fontWeight: 600, marginBottom: "1.25rem" }}>
-            Session setup
+            Choose game
           </h2>
           <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-
             <div style={rowStyle}>
               <label style={labelStyle}>
                 Game <span style={{ color: "var(--danger)" }}>*</span>
               </label>
               <select
-                value={sessionForm.gameId}
+                value={setupGameId}
                 onChange={(e) => {
-                  setSessionForm((p) => ({ ...p, gameId: e.target.value }));
-                  setFormErrors((fe) => ({ ...fe, gameId: "" }));
+                  setSetupGameId(e.target.value);
+                  setSetupError(null);
                 }}
               >
                 <option value="">— Select game —</option>
@@ -331,184 +440,168 @@ export default function PlayClient() {
                   </option>
                 ))}
               </select>
-              {formErrors["gameId"] && <p className="error-msg">{formErrors["gameId"]}</p>}
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
-              <div style={rowStyle}>
-                <label style={labelStyle}>
-                  Game Area <span style={{ color: "var(--danger)" }}>*</span>
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. Eldin Province"
-                  value={sessionForm.gameArea}
-                  onChange={(e) => {
-                    setSessionForm((p) => ({ ...p, gameArea: e.target.value }));
-                    setFormErrors((fe) => ({ ...fe, gameArea: "" }));
-                  }}
-                />
-                {formErrors["gameArea"] && <p className="error-msg">{formErrors["gameArea"]}</p>}
-              </div>
-              <div style={rowStyle}>
-                <label style={labelStyle}>
-                  Chapter <span style={{ color: "var(--danger)" }}>*</span>
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. Chapter 3"
-                  value={sessionForm.chapter}
-                  onChange={(e) => {
-                    setSessionForm((p) => ({ ...p, chapter: e.target.value }));
-                    setFormErrors((fe) => ({ ...fe, chapter: "" }));
-                  }}
-                />
-                {formErrors["chapter"] && <p className="error-msg">{formErrors["chapter"]}</p>}
-              </div>
-            </div>
+            {setupError && <p className="error-msg">{setupError}</p>}
 
-            <div style={rowStyle}>
-              <label style={labelStyle}>Sub-area</label>
-              <input
-                type="text"
-                placeholder="optional"
-                value={sessionForm.subArea}
-                onChange={(e) => setSessionForm((p) => ({ ...p, subArea: e.target.value }))}
-              />
-            </div>
-
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
-              <div style={rowStyle}>
-                <label style={labelStyle}>
-                  Player Goal <span style={{ color: "var(--danger)" }}>*</span>
-                </label>
-                <select
-                  value={sessionForm.playerGoal}
-                  onChange={(e) => setSessionForm((p) => ({ ...p, playerGoal: e.target.value as PlayerGoal }))}
-                >
-                  <option value="progression">Progression</option>
-                  <option value="exploration">Exploration</option>
-                  <option value="confirmation">Confirmation</option>
-                  <option value="completion">Completion</option>
-                </select>
-              </div>
-              <div style={rowStyle}>
-                <label style={labelStyle}>
-                  Confidence <span style={{ color: "var(--danger)" }}>*</span>
-                </label>
-                <select
-                  value={sessionForm.confidenceLevel}
-                  onChange={(e) => setSessionForm((p) => ({ ...p, confidenceLevel: e.target.value as ConfidenceLevel }))}
-                >
-                  <option value="confident">Confident</option>
-                  <option value="uncertain">Uncertain</option>
-                  <option value="stuck">Stuck</option>
-                </select>
-              </div>
-            </div>
-
-            <div>
-              <button className="primary" onClick={handleStartSession}>
-                Start Session
+            <div style={{ display: "flex", gap: "0.75rem" }}>
+              <button
+                className="primary"
+                disabled={setupBusy !== null}
+                onClick={() => void handleNewRun()}
+              >
+                {setupBusy === "new" ? "Starting…" : "New run"}
+              </button>
+              <button
+                className="ghost"
+                disabled={setupBusy !== null}
+                onClick={() => void handleLoadRun()}
+              >
+                {setupBusy === "load" ? "Loading…" : "Load run"}
               </button>
             </div>
+            <p style={{ fontSize: "12px", color: "var(--text-muted)", margin: 0 }}>
+              New run starts you at the beginning of the game. Load run restores your
+              last saved area.
+            </p>
           </div>
         </div>
       </div>
     );
   }
 
-  // ---- Active Session ----
+  // ---- Active run: Request Screen ----
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
-
       {/* Page header */}
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "1rem" }}>
         <div>
           <h1 style={{ fontSize: "20px", fontWeight: 700, marginBottom: "0.25rem" }}>Play</h1>
-          <p style={{ color: "var(--text-muted)" }}>Active session — inference pipeline live.</p>
+          <p style={{ color: "var(--text-muted)" }}>
+            {session!.gameTitle} — set where you are, then ask.
+          </p>
         </div>
         <button className="ghost" onClick={handleNewSession} style={{ flexShrink: 0 }}>
           New Session
         </button>
       </div>
 
-      {/* Session context summary */}
-      <div className="card" style={{ padding: "1rem 1.5rem" }}>
-        <p style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.5rem" }}>
-          Session Context
-        </p>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "1.5rem", fontSize: "13px" }}>
-          <SessionField label="Game" value={session!.gameTitle} />
-          <SessionField label="Area" value={session!.gameArea} />
-          <SessionField label="Chapter" value={session!.chapter} />
-          <SessionField label="Goal" value={session!.playerGoal} />
-          <SessionField label="Confidence" value={session!.confidenceLevel} />
-        </div>
-      </div>
-
-      {/* Hint input */}
+      {/* Request Screen — context + question on one screen */}
       <div className="card">
         <h2 style={{ fontSize: "15px", fontWeight: 600, marginBottom: "1rem" }}>Ask a hint</h2>
         <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+          {/* Where are you */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem" }}>
+            <div style={rowStyle}>
+              <label style={labelStyle}>
+                Area <span style={{ color: "var(--danger)" }}>*</span>
+              </label>
+              <input
+                type="text"
+                placeholder="e.g. Clock Tower"
+                value={contextForm.gameArea}
+                disabled={streaming}
+                onChange={(e) => {
+                  setContextForm((p) => ({ ...p, gameArea: e.target.value }));
+                  setFormErrors((fe) => ({ ...fe, gameArea: "" }));
+                }}
+              />
+              {formErrors["gameArea"] && <p className="error-msg">{formErrors["gameArea"]}</p>}
+            </div>
+            <div style={rowStyle}>
+              <label style={labelStyle}>
+                Sub-area <span style={{ color: "var(--danger)" }}>*</span>
+              </label>
+              <input
+                type="text"
+                placeholder="e.g. 3rd Floor"
+                value={contextForm.noSubArea ? "" : contextForm.subArea}
+                disabled={streaming || contextForm.noSubArea}
+                onChange={(e) => {
+                  setContextForm((p) => ({ ...p, subArea: e.target.value }));
+                  setFormErrors((fe) => ({ ...fe, subArea: "" }));
+                }}
+              />
+              <label
+                style={{ fontSize: "12px", color: "var(--text-muted)", display: "flex", alignItems: "center", gap: "6px", marginTop: "2px" }}
+              >
+                <input
+                  type="checkbox"
+                  checked={contextForm.noSubArea}
+                  disabled={streaming}
+                  onChange={(e) => {
+                    setContextForm((p) => ({ ...p, noSubArea: e.target.checked }));
+                    setFormErrors((fe) => ({ ...fe, subArea: "" }));
+                  }}
+                />
+                No sub-area / whole area
+              </label>
+              {formErrors["subArea"] && <p className="error-msg">{formErrors["subArea"]}</p>}
+            </div>
+          </div>
+
+          {/* Goal + confidence (dropdowns, unchanged) */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem" }}>
+            <div style={rowStyle}>
+              <label style={labelStyle}>Player Goal</label>
+              <select
+                value={contextForm.playerGoal}
+                disabled={streaming}
+                onChange={(e) =>
+                  setContextForm((p) => ({ ...p, playerGoal: e.target.value as PlayerGoal }))
+                }
+              >
+                <option value="progression">Progression</option>
+                <option value="exploration">Exploration</option>
+                <option value="confirmation">Confirmation</option>
+                <option value="completion">Completion</option>
+              </select>
+            </div>
+            <div style={rowStyle}>
+              <label style={labelStyle}>Confidence</label>
+              <select
+                value={contextForm.confidenceLevel}
+                disabled={streaming}
+                onChange={(e) =>
+                  setContextForm((p) => ({
+                    ...p,
+                    confidenceLevel: e.target.value as ConfidenceLevel,
+                  }))
+                }
+              >
+                <option value="confident">Confident</option>
+                <option value="uncertain">Uncertain</option>
+                <option value="stuck">Stuck</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Question */}
           <div style={rowStyle}>
             <label style={labelStyle}>
               Question <span style={{ color: "var(--danger)" }}>*</span>
             </label>
             <textarea
               rows={3}
-              placeholder="Ask SecondSeat…"
-              value={hintForm.text}
+              placeholder="e.g. I can't figure out the puzzle here"
+              value={question}
               disabled={streaming}
-              onChange={(e) => setHintForm((p) => ({ ...p, text: e.target.value }))}
+              onChange={(e) => {
+                setQuestion(e.target.value);
+                setFormErrors((fe) => ({ ...fe, question: "" }));
+              }}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) void handleSubmitHint();
               }}
               style={{ resize: "vertical" }}
             />
+            {formErrors["question"] && <p className="error-msg">{formErrors["question"]}</p>}
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "0.75rem" }}>
-            <div style={rowStyle}>
-              <label style={labelStyle}>Area <span style={{ color: "var(--danger)" }}>*</span></label>
-              <input
-                type="text"
-                value={hintForm.gameArea}
-                disabled={streaming}
-                onChange={(e) => setHintForm((p) => ({ ...p, gameArea: e.target.value }))}
-              />
-            </div>
-            <div style={rowStyle}>
-              <label style={labelStyle}>Chapter <span style={{ color: "var(--danger)" }}>*</span></label>
-              <input
-                type="text"
-                value={hintForm.chapter}
-                disabled={streaming}
-                onChange={(e) => setHintForm((p) => ({ ...p, chapter: e.target.value }))}
-              />
-            </div>
-            <div style={rowStyle}>
-              <label style={labelStyle}>Sub-area</label>
-              <input
-                type="text"
-                placeholder="optional"
-                value={hintForm.subArea}
-                disabled={streaming}
-                onChange={(e) => setHintForm((p) => ({ ...p, subArea: e.target.value }))}
-              />
-            </div>
-          </div>
-
-          <p style={{ fontSize: "12px", color: "var(--text-muted)", margin: 0 }}>
-            Ctrl+Enter to submit
-          </p>
+          <p style={{ fontSize: "12px", color: "var(--text-muted)", margin: 0 }}>Ctrl+Enter to submit</p>
 
           <div>
-            <button
-              className="primary"
-              disabled={streaming || !hintForm.text.trim()}
-              onClick={() => void handleSubmitHint()}
-            >
+            <button className="primary" disabled={streaming} onClick={() => void handleSubmitHint()}>
               {streaming ? "Receiving…" : "Get Hint"}
             </button>
           </div>
@@ -532,9 +625,7 @@ export default function PlayClient() {
       )}
 
       {/* Stream error */}
-      {streamError && (
-        <p className="error-msg" style={{ margin: 0 }}>⚠ {streamError}</p>
-      )}
+      {streamError && <p className="error-msg" style={{ margin: 0 }}>⚠ {streamError}</p>}
 
       {/* Hint log */}
       <div>
@@ -560,16 +651,12 @@ export default function PlayClient() {
                   <span style={{ fontSize: "13px", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {entry.question}
                   </span>
-                  {entry.refused ? (
-                    <span className="badge failed">Refused</span>
-                  ) : (
-                    <span className="badge completed">{entry.lineCount}L</span>
-                  )}
+                  <OutcomeBadge entry={entry} />
                 </div>
                 <p style={{
                   fontSize: "13px",
                   lineHeight: 1.7,
-                  color: entry.refused ? "var(--text-muted)" : "var(--text)",
+                  color: entry.outcome === "answered" ? "var(--text)" : "var(--text-muted)",
                   margin: 0,
                   whiteSpace: "pre-wrap",
                 }}>
@@ -587,13 +674,8 @@ export default function PlayClient() {
   );
 }
 
-function SessionField({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <span style={{ color: "var(--text-muted)", fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.05em", display: "block" }}>
-        {label}
-      </span>
-      <span style={{ fontWeight: 500 }}>{value}</span>
-    </div>
-  );
+function OutcomeBadge({ entry }: { entry: HintEntry }) {
+  if (entry.outcome === "refused") return <span className="badge failed">Refused</span>;
+  if (entry.outcome === "redirected") return <span className="badge">Redirected</span>;
+  return <span className="badge completed">{entry.lineCount}L</span>;
 }

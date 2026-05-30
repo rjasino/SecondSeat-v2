@@ -84,6 +84,8 @@ vi.mock("@secondseat/db", () => ({
 import { authMiddleware } from "../middleware/auth.middleware.js";
 import { errorMiddleware } from "../middleware/error.middleware.js";
 import { generateRouter } from "./generate.route.js";
+import { getLlmAdapter } from "../services/llm/index.js";
+import { REDIRECT_SENTINEL } from "../services/prompt/prompt-template.js";
 
 function buildTestApp() {
   const app = express();
@@ -100,10 +102,28 @@ const VALID_BODY = {
   gameId: VALID_OID,
   gameArea: "Water Temple",
   chapter: "Chapter 3",
+  subArea: "First Floor",
   playerGoal: "progression",
   confidenceLevel: "stuck",
   text: "Where do I go next?",
 };
+
+/** Parses the JSON payload of the `event: done` SSE frame from a buffered body. */
+function parseDonePayload(body: string): Record<string, unknown> {
+  const lines = body.split("\n");
+  const doneIdx = lines.findIndex((l) => l === "event: done");
+  const doneData = lines[doneIdx + 1] ?? "";
+  return JSON.parse(doneData.replace("data: ", "")) as Record<string, unknown>;
+}
+
+/** Buffers the full SSE stream into a string (supertest custom parser). */
+function bufferSse(res: request.Response, callback: (err: Error | null, body: string) => void) {
+  let data = "";
+  res.on("data", (chunk: Buffer) => {
+    data += chunk.toString();
+  });
+  res.on("end", () => callback(null, data));
+}
 const AUTH_HEADERS = {
   "x-service-secret": "test-secret",
   "x-user-id": "user-123",
@@ -265,6 +285,47 @@ describe("POST /api/v1/generate", () => {
     expect(res.body).toContain("event: done");
     expect(res.body).toMatch(/"refused":true/);
     expect(res.body).toMatch(/insufficient_context/);
+  });
+
+  it("tags a clean hint response with outcome=answered", async () => {
+    const res = await request(app)
+      .post("/api/v1/generate")
+      .set(AUTH_HEADERS)
+      .send(VALID_BODY)
+      .buffer(true)
+      .parse(bufferSse);
+
+    const payload = parseDonePayload(res.body);
+    expect(payload.outcome).toBe("answered");
+    expect(payload.refused).toBe(false);
+  });
+
+  it("tags an out-of-scope redirect with outcome=redirected and refused=false", async () => {
+    vi.mocked(getLlmAdapter).mockReturnValueOnce({
+      streamGenerate: async function* () {
+        yield REDIRECT_SENTINEL;
+      },
+    } as never);
+
+    const res = await request(app)
+      .post("/api/v1/generate")
+      .set(AUTH_HEADERS)
+      .send({ ...VALID_BODY, text: "what's the best build to beat the game?" })
+      .buffer(true)
+      .parse(bufferSse);
+
+    const payload = parseDonePayload(res.body);
+    expect(payload.outcome).toBe("redirected");
+    expect(payload.refused).toBe(false);
+  });
+
+  it("returns 422 when subArea is missing (now required)", async () => {
+    const { subArea: _subArea, ...noSubArea } = VALID_BODY;
+    const res = await request(app)
+      .post("/api/v1/generate")
+      .set(AUTH_HEADERS)
+      .send(noSubArea);
+    expect(res.status).toBe(422);
   });
 
   it("accepts a valid request body without chapter and streams SSE successfully", async () => {

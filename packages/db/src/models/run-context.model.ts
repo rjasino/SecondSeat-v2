@@ -17,8 +17,8 @@ export interface IRunContext extends Document {
   _id: Types.ObjectId;
   playSessionId: Types.ObjectId;
   gameArea: string;
-  chapter: string;
-  subArea?: string;
+  chapter?: string;
+  subArea: string;
   playerGoal: PlayerGoal;
   confidenceLevel: ConfidenceLevel;
   createdAt: Date;
@@ -34,8 +34,8 @@ const runContextSchema = new Schema<IRunContext>(
       index: true,
     },
     gameArea: { type: String, required: true },
-    chapter: { type: String, required: true },
-    subArea: { type: String },
+    chapter: { type: String },
+    subArea: { type: String, required: true },
     playerGoal: {
       type: String,
       enum: ["progression", "exploration", "confirmation", "completion"],

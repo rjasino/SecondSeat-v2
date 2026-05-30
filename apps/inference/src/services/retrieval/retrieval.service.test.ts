@@ -99,6 +99,20 @@ describe("buildEnrichedQuery", () => {
       "RE2R | RPD | Sewer | goal:progression | q"
     );
   });
+
+  it("drops the 'none' sub-area sentinel from the enriched query", () => {
+    const ctx = { ...RC, subArea: "none" };
+    expect(buildEnrichedQuery("RE2R", ctx, "q")).toBe(
+      "RE2R | Chapter 1 | RPD | goal:progression | q"
+    );
+  });
+
+  it("treats the 'none' sentinel case-insensitively", () => {
+    const ctx = { ...RC, subArea: "None" };
+    expect(buildEnrichedQuery("RE2R", ctx, "q")).toBe(
+      "RE2R | Chapter 1 | RPD | goal:progression | q"
+    );
+  });
 });
 
 describe("retrieveChunks", () => {
@@ -200,6 +214,30 @@ describe("retrieveChunks", () => {
     const { subArea: _, ...rest } = RC;
 
     await retrieveChunks("q", "game-1", rest as RetrievalRunContext);
+
+    expect(mockQuery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          $and: [
+            { game_id: "game-1" },
+            { $or: [{ chapter: "chapter 1" }, { area: "rpd" }] },
+          ],
+        },
+      })
+    );
+  });
+
+  it("drops the 'none' sub-area sentinel from the location $or clause", async () => {
+    mockQuery.mockResolvedValue({
+      ids: [["v"]],
+      distances: [[0.5]],
+      metadatas: [
+        [{ source_id: "s", document_id: "d", chunk_index: 0, heading_path: "X" }],
+      ],
+      documents: [["content"]],
+    });
+
+    await retrieveChunks("q", "game-1", { ...RC, subArea: "none" });
 
     expect(mockQuery).toHaveBeenCalledWith(
       expect.objectContaining({

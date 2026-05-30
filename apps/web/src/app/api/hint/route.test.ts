@@ -22,6 +22,7 @@ const VALID_BODY = {
   gameId: VALID_OID,
   gameArea: "Hyrule Field",
   chapter: "Chapter 3",
+  subArea: "Inner Keep",
   playerGoal: "progression",
   confidenceLevel: "uncertain",
   text: "How do I get past the locked gate?",
@@ -74,6 +75,26 @@ describe("POST /api/hint", () => {
     expect(res.status).toBe(422);
   });
 
+  it("returns 422 when subArea is missing (now required)", async () => {
+    const { subArea: _omit, ...noSubArea } = VALID_BODY;
+    const res = await POST(makeRequest(noSubArea));
+    expect(res.status).toBe(422);
+  });
+
+  it("accepts the 'none' sentinel for subArea", async () => {
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response(new ReadableStream(), {
+        status: 200,
+        headers: { "Content-Type": "text/event-stream" },
+      })
+    );
+    vi.stubGlobal("fetch", mockFetch);
+
+    const res = await POST(makeRequest({ ...VALID_BODY, subArea: "none" }));
+    expect(res.status).toBe(200);
+    vi.unstubAllGlobals();
+  });
+
   it("returns 400 for a non-JSON body", async () => {
     const req = new Request("http://localhost/api/hint", {
       method: "POST",
@@ -108,7 +129,7 @@ describe("POST /api/hint", () => {
     vi.unstubAllGlobals();
   });
 
-  it("forwards the X-Inference-Secret header to the upstream service", async () => {
+  it("forwards the X-Service-Secret header to the upstream service", async () => {
     const mockFetch = vi.fn().mockResolvedValue(
       new Response(new ReadableStream(), {
         status: 200,
@@ -123,7 +144,7 @@ describe("POST /api/hint", () => {
       "http://inference-mock:3001/api/v1/generate",
       expect.objectContaining({
         headers: expect.objectContaining({
-          "X-Inference-Secret": "test-secret",
+          "X-Service-Secret": "test-secret",
         }),
       })
     );

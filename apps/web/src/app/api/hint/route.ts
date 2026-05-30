@@ -11,7 +11,9 @@ const hintRequestSchema = z.object({
   gameId: z.string().regex(objectIdRegex, "Must be a valid MongoDB ObjectId"),
   gameArea: z.string().min(1).max(100),
   chapter: z.string().min(1).max(100).optional(),
-  subArea: z.string().min(1).max(100).optional(),
+  // Required: mirrors the inference boundary. "none" is the valid
+  // "no sub-area / whole area" sentinel.
+  subArea: z.string().min(1).max(100),
   playerGoal: z.enum(["progression", "exploration", "confirmation", "completion"]),
   confidenceLevel: z.enum(["confident", "uncertain", "stuck"]),
   text: z.string().min(1).max(500),
