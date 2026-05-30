@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
 import { RagSourceModel } from "@/models/rag-source.model";
+import { UserModel } from "@/models/user.model";
 import { getSession } from "@/lib/session";
 import { createDraftSchema } from "@/lib/ingest/schemas";
 export const runtime = "nodejs";
@@ -29,9 +30,12 @@ export async function POST(req: Request): Promise<NextResponse> {
     );
   }
 
-  const { title, game, guideType, author, content } = parsed.data;
+  const { title, game, guideType, content } = parsed.data;
 
   await connectDB();
+
+  const user = await UserModel.findById(session.userId).lean();
+  const author = user?.name ?? session.userId;
 
   const source = await RagSourceModel.create({
     title,

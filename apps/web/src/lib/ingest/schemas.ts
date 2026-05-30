@@ -53,14 +53,12 @@ export const DRAFT_CHAR_LIMIT = 50_000;
 export const uploadMetaSchema = z.object({
   game: z.string().min(1).max(100),
   guideType: z.enum(GUIDE_TYPE_VALUES),
-  author: z.string().min(1).max(200),
 });
 
 export const createDraftSchema = z.object({
   title: z.string().min(1).max(200),
   game: z.string().min(1).max(100),
   guideType: z.enum(GUIDE_TYPE_VALUES),
-  author: z.string().min(1).max(200),
   content: z.string().max(DRAFT_CHAR_LIMIT).optional(),
 });
 
@@ -68,7 +66,6 @@ export const updateDraftSchema = z.object({
   title: z.string().min(1).max(200).optional(),
   game: z.string().min(1).max(100).optional(),
   guideType: z.enum(GUIDE_TYPE_VALUES).optional(),
-  author: z.string().min(1).max(200).optional(),
   content: z.string().max(DRAFT_CHAR_LIMIT).optional(),
 });
 
