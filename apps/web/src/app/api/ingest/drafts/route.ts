@@ -3,8 +3,6 @@ import { connectDB } from "@/lib/db";
 import { RagSourceModel } from "@/models/rag-source.model";
 import { getSession } from "@/lib/session";
 import { createDraftSchema } from "@/lib/ingest/schemas";
-import { findDuplicateSource } from "@/lib/ingest/ingest.service";
-
 export const runtime = "nodejs";
 
 export async function POST(req: Request): Promise<NextResponse> {
@@ -34,18 +32,6 @@ export async function POST(req: Request): Promise<NextResponse> {
   const { title, game, guideType, author, content } = parsed.data;
 
   await connectDB();
-
-  const existingSourceId = await findDuplicateSource(game, author);
-  if (existingSourceId) {
-    return NextResponse.json(
-      {
-        error: "duplicate_source",
-        hint: "A source for this game and author already exists.",
-        existingSourceId,
-      },
-      { status: 409 }
-    );
-  }
 
   const source = await RagSourceModel.create({
     title,

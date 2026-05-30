@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -29,7 +30,7 @@ export default function RegisterPage() {
       });
 
       if (res.ok) {
-        router.push("/");
+        router.push("/dashboard/play");
       } else {
         const data = (await res.json()) as { error: string };
         if (data.error === "email_already_registered") {
@@ -54,89 +55,158 @@ export default function RegisterPage() {
         alignItems: "center",
         justifyContent: "center",
         minHeight: "100vh",
+        padding: "2rem",
       }}
     >
-      <div className="card" style={{ width: "100%", maxWidth: "380px" }}>
-        <h1 style={{ fontSize: "20px", fontWeight: 700, marginBottom: "1.5rem" }}>
-          Create account
-        </h1>
-        <form
-          onSubmit={handleSubmit}
-          style={{ display: "flex", flexDirection: "column", gap: "1rem" }}
-        >
-          <div>
-            <label
-              htmlFor="name"
-              style={{
-                display: "block",
-                marginBottom: "4px",
-                color: "var(--text-muted)",
-                fontSize: "12px",
-              }}
-            >
-              NAME
-            </label>
-            <input
-              id="name"
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-              autoComplete="name"
-            />
-          </div>
-          <div>
-            <label
-              htmlFor="email"
-              style={{
-                display: "block",
-                marginBottom: "4px",
-                color: "var(--text-muted)",
-                fontSize: "12px",
-              }}
-            >
-              EMAIL
-            </label>
-            <input
-              id="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              autoComplete="email"
-            />
-          </div>
-          <div>
-            <label
-              htmlFor="password"
-              style={{
-                display: "block",
-                marginBottom: "4px",
-                color: "var(--text-muted)",
-                fontSize: "12px",
-              }}
-            >
-              PASSWORD{" "}
-              <span style={{ fontWeight: 400 }}>(min 12 characters)</span>
-            </label>
-            <input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              autoComplete="new-password"
-            />
-          </div>
-          {error && <p className="error-msg">{error}</p>}
-          <button type="submit" className="primary" disabled={loading}>
-            {loading ? "Creating account…" : "Create account"}
-          </button>
-          <p style={{ textAlign: "center", color: "var(--text-muted)", fontSize: "13px" }}>
-            Already have an account?{" "}
-            <a href="/login">Sign in</a>
+      <div style={{ width: "100%", maxWidth: "360px" }}>
+        {/* Logo */}
+        <div style={{ textAlign: "center", marginBottom: "2rem" }}>
+          <Image
+            src="/ss_logo.png"
+            alt="SecondSeat"
+            width={729}
+            height={440}
+            priority
+            style={{ height: "100px", width: "auto" }}
+          />
+        </div>
+
+        <div className="card" style={{ padding: "2rem" }}>
+          <h1
+            style={{
+              fontSize: "15px",
+              fontWeight: 600,
+              marginBottom: "0.35rem",
+            }}
+          >
+            Create account
+          </h1>
+          <p
+            style={{
+              fontSize: "12px",
+              color: "var(--text-muted)",
+              marginBottom: "1.5rem",
+              fontFamily: "var(--font-jetbrains), monospace",
+            }}
+          >
+            Free to join — start hinting in seconds
           </p>
-        </form>
+
+          <form
+            onSubmit={handleSubmit}
+            style={{ display: "flex", flexDirection: "column", gap: "1rem" }}
+          >
+            <div>
+              <label
+                htmlFor="name"
+                style={{
+                  display: "block",
+                  marginBottom: "5px",
+                  color: "var(--text-muted)",
+                  fontSize: "10px",
+                  fontFamily: "var(--font-jetbrains), monospace",
+                  letterSpacing: "0.1em",
+                  textTransform: "uppercase",
+                }}
+              >
+                Name
+              </label>
+              <input
+                id="name"
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+                autoComplete="name"
+                placeholder="Your name"
+              />
+            </div>
+            <div>
+              <label
+                htmlFor="email"
+                style={{
+                  display: "block",
+                  marginBottom: "5px",
+                  color: "var(--text-muted)",
+                  fontSize: "10px",
+                  fontFamily: "var(--font-jetbrains), monospace",
+                  letterSpacing: "0.1em",
+                  textTransform: "uppercase",
+                }}
+              >
+                Email
+              </label>
+              <input
+                id="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                autoComplete="email"
+                placeholder="you@example.com"
+              />
+            </div>
+            <div>
+              <label
+                htmlFor="password"
+                style={{
+                  display: "block",
+                  marginBottom: "5px",
+                  color: "var(--text-muted)",
+                  fontSize: "10px",
+                  fontFamily: "var(--font-jetbrains), monospace",
+                  letterSpacing: "0.1em",
+                  textTransform: "uppercase",
+                }}
+              >
+                Password{" "}
+                <span
+                  style={{
+                    fontWeight: 400,
+                    opacity: 0.7,
+                    textTransform: "none",
+                    letterSpacing: 0,
+                  }}
+                >
+                  (min 12 chars)
+                </span>
+              </label>
+              <input
+                id="password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                autoComplete="new-password"
+                placeholder="············"
+              />
+            </div>
+            {error && <p className="error-msg">{error}</p>}
+            <button
+              type="submit"
+              className="primary"
+              disabled={loading}
+              style={{ marginTop: "0.25rem" }}
+            >
+              {loading ? "Creating account…" : "Create account"}
+            </button>
+          </form>
+        </div>
+
+        <p
+          style={{
+            textAlign: "center",
+            color: "var(--text-muted)",
+            fontSize: "12px",
+            marginTop: "1.25rem",
+            fontFamily: "var(--font-jetbrains), monospace",
+          }}
+        >
+          Already have an account?{" "}
+          <a href="/login" style={{ color: "var(--accent)" }}>
+            Sign in
+          </a>
+        </p>
       </div>
     </div>
   );

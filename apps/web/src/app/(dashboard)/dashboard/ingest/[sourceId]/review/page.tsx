@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import ConfirmDialog from "@/components/ConfirmDialog";
 
 interface ReviewSource {
   _id: string;
@@ -34,6 +35,7 @@ export default function ReviewPage() {
   const [error, setError] = useState<string | null>(null);
   const [approving, setApproving] = useState(false);
   const [discarding, setDiscarding] = useState(false);
+  const [discardOpen, setDiscardOpen] = useState(false);
 
   useEffect(() => {
     void (async () => {
@@ -81,21 +83,22 @@ export default function ReviewPage() {
   }
 
   async function handleDiscard() {
-    if (!confirm(`Discard "${source?.title}"? This cannot be undone.`)) return;
     setDiscarding(true);
     setError(null);
     try {
       const res = await fetch(`/api/ingest/sources/${sourceId}`, {
         method: "DELETE",
       });
-      if (res.status === 204) {
+      if (res.status === 202 || res.status === 204) {
         router.push("/dashboard/ingest");
       } else {
         const d = (await res.json()) as { error: string; hint?: string };
         setError(d.hint ?? d.error);
+        setDiscardOpen(false);
       }
     } catch {
       setError("Discard failed. Please try again.");
+      setDiscardOpen(false);
     } finally {
       setDiscarding(false);
     }
@@ -141,6 +144,16 @@ export default function ReviewPage() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+      <ConfirmDialog
+        open={discardOpen}
+        title="Discard this source?"
+        message="This will cancel the ingestion and permanently delete the entry. This cannot be undone."
+        confirmLabel="Discard"
+        loading={discarding}
+        onConfirm={() => void handleDiscard()}
+        onCancel={() => setDiscardOpen(false)}
+      />
+
       <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
         <Link href="/dashboard/ingest" style={{ color: "var(--text-muted)" }}>
           ← Sources
@@ -219,10 +232,10 @@ export default function ReviewPage() {
       <div style={{ display: "flex", gap: "8px" }}>
         <button
           className="danger"
-          onClick={() => void handleDiscard()}
+          onClick={() => setDiscardOpen(true)}
           disabled={discarding || approving}
         >
-          {discarding ? "Discarding…" : "Discard"}
+          Discard
         </button>
         <button
           className="primary"

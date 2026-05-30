@@ -10,8 +10,8 @@ export default function LogoutButton() {
   async function handleLogout() {
     setLoading(true);
     try {
-      await fetch("/api/auth/logout", { method: "POST" });
-      router.refresh();
+      await fetch("/api/auth/logout", { method: "POST", redirect: "manual" });
+      router.push("/");
     } finally {
       setLoading(false);
     }
@@ -22,9 +22,9 @@ export default function LogoutButton() {
       onClick={handleLogout}
       disabled={loading}
       className="ghost"
-      style={{ fontSize: "13px", padding: "4px 10px" }}
+      style={{ fontSize: "12px", padding: "5px 12px" }}
     >
-      {loading ? "Signing out…" : "Sign out"}
+      {loading ? "Logging out…" : "Logout"}
     </button>
   );
 }
