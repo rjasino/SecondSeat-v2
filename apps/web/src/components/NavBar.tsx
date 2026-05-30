@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { getSession } from "@/lib/session";
 import { connectDB } from "@/lib/db";
 import { UserModel } from "@/models/user.model";
@@ -35,7 +36,7 @@ export default async function NavBar() {
       style={{
         background: "var(--bg-surface)",
         borderBottom: "1px solid var(--border)",
-        padding: "10px 2rem",
+        padding: "8px 2rem",
         display: "flex",
         alignItems: "center",
         gap: "1rem",
@@ -43,9 +44,21 @@ export default async function NavBar() {
     >
       <Link
         href="/"
-        style={{ fontWeight: 700, color: "#fff", marginRight: "auto" }}
+        aria-label="SecondSeat home"
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          marginRight: "auto",
+        }}
       >
-        SecondSeat
+        <Image
+          src="/ss_logo.png"
+          alt="SecondSeat"
+          width={729}
+          height={440}
+          priority
+          style={{ height: "75px", width: "auto" }}
+        />
       </Link>
 
       {isLoggedIn ? (

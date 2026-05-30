@@ -26,6 +26,19 @@ export interface RetrievalRunContext {
   playerGoal: string;
 }
 
+/**
+ * Reserved `subArea` value meaning "no sub-area / whole area". Required at the
+ * request boundary, but treated as absent for retrieval so it never narrows the
+ * location filter or pollutes the embedding query. Matched case-insensitively.
+ */
+const SUBAREA_NONE = "none";
+
+/** Returns the sub-area if it is a usable location, or `undefined` for the `"none"` sentinel / empty. */
+function usableSubArea(subArea?: string): string | undefined {
+  if (!subArea || subArea.trim().toLowerCase() === SUBAREA_NONE) return undefined;
+  return subArea;
+}
+
 let _client: ChromaClient | null = null;
 
 function getClient(): ChromaClient {
@@ -52,7 +65,7 @@ export function buildEnrichedQuery(
     gameTitle,
     ctx.chapter,
     ctx.gameArea,
-    ctx.subArea,
+    usableSubArea(ctx.subArea),
     `goal:${ctx.playerGoal}`,
     rawQuery,
   ]
@@ -67,9 +80,10 @@ export function buildEnrichedQuery(
  */
 function buildLocationOrClause(ctx: RetrievalRunContext): Where | null {
   const clauses: Where[] = [];
+  const subArea = usableSubArea(ctx.subArea);
   if (ctx.chapter) clauses.push({ chapter: ctx.chapter.toLowerCase() });
   if (ctx.gameArea) clauses.push({ area: ctx.gameArea.toLowerCase() });
-  if (ctx.subArea) clauses.push({ sub_area: ctx.subArea.toLowerCase() });
+  if (subArea) clauses.push({ sub_area: subArea.toLowerCase() });
   if (clauses.length === 0) return null;
   if (clauses.length === 1) return clauses[0]!;
   return { $or: clauses } as Where;

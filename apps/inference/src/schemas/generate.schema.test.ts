@@ -9,6 +9,7 @@ const validBody = {
   gameId: VALID_OID,
   gameArea: "Water Temple",
   chapter: "Chapter 3",
+  subArea: "First Floor",
   playerGoal: "progression" as const,
   confidenceLevel: "stuck" as const,
   text: "Where do I go next?",
@@ -29,11 +30,22 @@ describe("generateSchema", () => {
     }
   });
 
-  it("accepts an optional subArea field", () => {
-    const result = generateSchema.safeParse({
-      ...validBody,
-      subArea: "First Floor",
-    });
+  it("rejects a missing subArea field (subArea is now required)", () => {
+    const { subArea: _subArea, ...without } = validBody;
+    const result = generateSchema.safeParse(without);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.errors.some((e) => e.path.includes("subArea"))).toBe(true);
+    }
+  });
+
+  it("rejects an empty subArea field", () => {
+    const result = generateSchema.safeParse({ ...validBody, subArea: "" });
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts the 'none' sentinel as a valid subArea", () => {
+    const result = generateSchema.safeParse({ ...validBody, subArea: "none" });
     expect(result.success).toBe(true);
   });
 

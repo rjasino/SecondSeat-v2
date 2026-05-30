@@ -1,5 +1,5 @@
 import { HintRequestModel, HintResponseModel } from "@secondseat/db";
-import type { PlayerGoal, RefusalReason } from "@secondseat/db";
+import type { HintOutcome, PlayerGoal, RefusalReason } from "@secondseat/db";
 
 export interface InsertHintRequestParams {
   playSessionId: string;
@@ -11,6 +11,7 @@ export interface InsertHintResponseParams {
   hintRequestId: string;
   outputText: string;
   lineCount: number;
+  outcome: HintOutcome;
   refused: boolean;
   refusalReason: RefusalReason | null;
 }
@@ -42,6 +43,7 @@ export async function insertHintResponse(
       hintRequestId: params.hintRequestId,
       outputText: params.outputText,
       lineCount: params.lineCount,
+      outcome: params.outcome,
       refused: params.refused,
       refusalReason: params.refusalReason,
       audioUri: null,

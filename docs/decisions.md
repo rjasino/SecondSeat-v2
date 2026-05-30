@@ -4,6 +4,58 @@ Architecture and product decisions for SecondSeat, in reverse chronological orde
 
 ---
 
+## 2026-05-30 — Contextual Hint Refinement: Required Run Context + Out-of-Scope Redirect
+
+**Context**
+
+Inference is stable but output quality is weak. The owner observed that "where do I go / what's the best build / how do I beat X" questions return incomplete answers and blamed the 1–3 line cap. Diagnosis: those are **out-of-scope walkthrough-engine questions**, not a length problem. SecondSeat's value is situational micro-hints ("stuck on the clock tower puzzle" → "find the small gear, put it on the large gear"). The quality lever is **precision of input** (location) and **steering players away from out-of-scope asks**, not a longer answer. `gameArea`/`subArea` feed both the enriched embedding query and the Chroma `$or` filter, so requiring them directly sharpens retrieval. Spec: `docs/specs/2026-05-30-SPEC-contextual-hint-refinement.md`.
+
+**Decision**
+
+- **Keep the hard 1–3 line cap.** Fix quality via input shaping + redirect, not by loosening the cap. Strategy/build/tier-list questions are deliberately out of scope — SecondSeat is a restrained situational companion, not a walkthrough engine.
+- **Run context is required on every hint request.** `subArea` changes from optional to required in `generate.schema.ts`; `gameArea` already required. A reserved `"none"` sentinel ("no sub-area / whole area") is accepted and dropped from both the retrieval `$or` filter and the enriched query so it never over-narrows search.
+- **Out-of-scope redirect is prompt-policy only.** A `HINT_POLICY` rule makes the model emit a fixed `REDIRECT_SENTINEL` verbatim for strategy/build questions; the server matches the sentinel and logs `outcome="redirected"` (`refused=false`). No classifier, no LLM-emitted structured response type — same mechanism as the existing refusal string.
+- **Add `outcome` enum (`answered` | `redirected` | `refused`) to `HintResponse`.** Keeps the existing `refused`/`refusalReason` fields; gives analytics a clean three-way split.
+- **Session/run-context CRUD lives in `apps/web` Route Handlers**, hitting `packages/db` directly — not `apps/inference`. New run creates `PlaySession` + initial start-of-game `RunContext`; load run fetches the active session + latest `RunContext` to prefill the Request Screen; edits update `RunContext` **in place** (latest wins, no versioning).
+- **Align `chapter`: `RunContext.chapter` becomes `required: false`.** This lands the post-MVP follow-up deferred in the metadata-alignment-v1 entry below, and removes the `chapter: ""` empty-string workaround in the generate route.
+- **`packages/db/src/models` is authoritative; `data_model.md` is known-stale** (it shows an embedded `play_sessions.currentContext` + `contextEvents` and a merged `hint_interactions` that do not exist in code). The doc is **not** reconciled in this work.
+
+**Alternatives considered**
+
+- **Loosen the 1–3 line cap to satisfy strategy questions.** Rejected — it quietly turns SecondSeat into the generic strategy chatbot it is positioned against, and erodes the core "restrained guide" wedge. The clock-tower example proves a complete situational hint already fits in three lines.
+- **Keep `gameArea`/`subArea` optional + "clarify-when-thin"** (SS asks one clarifying question when location is missing). Rejected — the owner chose to require location up front. With area always present, the "no area" trigger is unreachable, so clarify-when-thin was dropped entirely rather than shipped as dead code.
+- **Structured `responseType` emitted by the LLM** (answer/redirect/refuse) for deterministic categorization. Rejected for v1 — heavier change to schema/UI; the existing sentinel-string pattern already gives reliable server-side detection with no model-contract change.
+- **Put session/run-context CRUD in `apps/inference`.** Rejected — inference is meant to own only the LLM/RAG hot path; centralizing CRUD there adds a `web → inference → DB` hop per read/write and mixes concerns. Web Route Handlers already hit the DB (auth register route), so the pattern exists.
+- **Append a new versioned `RunContext` on every edit** (history trail). Rejected for v1 — update-in-place is simpler and the `contextEvents` history concept (from the stale doc) is out of scope.
+
+**Consequences**
+
+- Players must supply area + sub-area before every hint; the Request Screen enforces it client-side and the Zod boundary rejects bypasses with `422`. This is the intended friction — it is what makes hints precise.
+- The `"none"` sentinel keeps required sub-area from punishing areas that have no sub-division, without polluting the retrieval filter.
+- `outcome` gives the first real signal on how often players ask out-of-scope questions — useful for judging whether the redirect copy and input shaping are working.
+- `RunContext.chapter` loosening **closes** the metadata-alignment-v1 follow-up; the `chapter: ""` workaround in the generate route should be removed as part of implementation.
+- `apps/inference` stays hot-path-only; the new surface area lives in `apps/web` Route Handlers and `packages/db` models.
+- **Cross-user safety:** session/context reads must scope to the authed `userId` — flagged in the spec edge cases and tests.
+
+**Files**
+
+Inference (gated by this `/log`):
+- Modified: `apps/inference/src/schemas/generate.schema.ts`
+- Modified: `apps/inference/src/routes/generate.route.ts`
+- Modified: `apps/inference/src/services/retrieval/retrieval.service.ts`
+- Modified: `apps/inference/src/services/prompt/prompt-template.ts`
+
+DB (gated by this `/log`):
+- Modified: `packages/db/src/models/run-context.model.ts`
+- Modified: `packages/db/src/models/hint-response.model.ts`
+
+Web (not gated — unblocked path):
+- Added: `apps/web/src/app/api/sessions/route.ts` (+ active-session handler)
+- Added: `apps/web/src/app/api/run-context/[id]/route.ts`
+- Modified/Added: Request Screen component(s) under `apps/web/src/app/`
+
+---
+
 ## 2026-05-30 — Metadata Alignment v1: Drop Chapter Slot, Lift Content Type + Spoiler Level via Frontmatter
 
 **Context**

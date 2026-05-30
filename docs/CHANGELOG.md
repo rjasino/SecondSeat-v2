@@ -6,6 +6,37 @@ All notable changes to SecondSeat are documented here. Format loosely follows [K
 
 ## Unreleased
 
+### Added (contextual-hint-refinement — pending gate)
+
+- **DB / `HintResponse`:** New `outcome` field — enum `"answered" | "redirected" | "refused"`, required, default `"answered"`. Carried alongside the existing `refused` / `refusalReason` fields (not a replacement). Lets analytics segment normal hints, out-of-scope redirects, and spoiler/keyword refusals.
+- **Inference / Prompt template:** New exported `REDIRECT_SENTINEL` constant + a `HINT_POLICY` rule instructing the model to emit it verbatim for strategy / build / "how to beat" / tier-list questions (mirrors the existing fixed refusal string). Server-side sentinel match → `outcome="redirected"` (`refused=false`).
+- **Web / Run-context API (Route Handlers):** `POST /api/sessions` (new run → create `PlaySession` + initial start-of-game `RunContext`), `GET /api/sessions/active?gameId=:id` (load run → active session + latest `RunContext` for prefill, scoped to authed `userId`), `PUT /api/run-context/:id` (update run context in place). All hit `packages/db` directly; inference is untouched by session CRUD.
+- **Web / Request Screen:** Single-screen capture of `gameArea` (text), `subArea` (text + "No sub-area / whole area" toggle → `"none"`), `playerGoal` (dropdown, unchanged), `confidenceLevel` (dropdown, unchanged), and the question — all required, validated client-side before submit.
+
+### Changed (contextual-hint-refinement — pending gate)
+
+- **Inference / Generate schema:** `subArea` changes from `.optional()` to **required** (`min(1) max(100)`); the literal `"none"` is an accepted value meaning "no sub-area / whole area". `gameArea` already required (no change).
+- **Inference / Retrieval service:** `subArea === "none"` is treated as absent — dropped from the `buildLocationOrClause` `$or` filter **and** from the `buildEnrichedQuery` segment list, so the sentinel never over-narrows search. The game-wide soft fallback is unchanged.
+- **Inference / Generate route:** Maps the model output to `HintResponse.outcome` — refusal sentinel → `refused`, `REDIRECT_SENTINEL` → `redirected`, otherwise `answered`.
+- **DB / `RunContext`:** `subArea` becomes **required** (`"none"` accepted). `chapter` becomes **optional** (`required: false`) — this lands the post-MVP follow-up deferred in metadata-alignment-v1, removing the need for the `chapter: ""` empty-string workaround in the generate route. Run-context edits are persisted **in place** (latest wins, no versioning).
+
+### Files (contextual-hint-refinement — pending gate)
+
+- Modified: `apps/inference/src/schemas/generate.schema.ts`
+- Modified: `apps/inference/src/routes/generate.route.ts`
+- Modified: `apps/inference/src/services/retrieval/retrieval.service.ts`
+- Modified: `apps/inference/src/services/prompt/prompt-template.ts`
+- Modified: `packages/db/src/models/run-context.model.ts`
+- Modified: `packages/db/src/models/hint-response.model.ts`
+- Added:    `apps/web/src/app/api/sessions/route.ts` (+ `active` handler)
+- Added:    `apps/web/src/app/api/run-context/[id]/route.ts`
+- Modified/Added: Request Screen component(s) under `apps/web/src/app/` (exact paths finalized at implementation)
+
+### Notes (contextual-hint-refinement)
+
+- **1–3 line cap unchanged.** The fix for "unhelpful" strategy answers is input shaping + redirect, not loosening the cap.
+- **`data_model.md` not reconciled.** It is known-stale; `packages/db/src/models` is the authoritative shape for this work.
+
 ### Changed (metadata-alignment-v1 — in progress)
 
 - **Workers / Heading parser:** `ParsedHeadingPath` drops the `chapter` slot; positional map is now `route → area → sub_area` (3 fields, down from 4). All existing callers that spread `parsedHeading` into Chroma metadata receive the new shape automatically.

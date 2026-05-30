@@ -1,3 +1,5 @@
+import Image from "next/image";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import { getSession } from "@/lib/session";
@@ -30,24 +32,49 @@ export default async function DashboardLayout({
         style={{
           background: "var(--bg-surface)",
           borderBottom: "1px solid var(--border)",
-          padding: "12px 2rem",
+          padding: "8px 2rem",
           display: "flex",
           alignItems: "center",
-          gap: "1.5rem",
+          gap: "1rem",
         }}
       >
-        <span style={{ fontWeight: 700, color: "#fff", marginRight: "8px" }}>
-          SecondSeat
-        </span>
-        <a href="/dashboard/ingest">Ingestion</a>
-        <a href="/dashboard/play">Play</a>
-        <span style={{ marginLeft: "auto" }}>
-          <form action="/api/auth/logout" method="POST" style={{ display: "inline" }}>
-            <button type="submit" className="ghost" style={{ fontSize: "12px", padding: "4px 10px" }}>
-              Sign out
-            </button>
-          </form>
-        </span>
+        <Link
+          href="/"
+          aria-label="SecondSeat home"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            marginRight: "auto",
+          }}
+        >
+          <Image
+            src="/ss_logo.png"
+            alt="SecondSeat"
+            width={729}
+            height={440}
+            priority
+            style={{ height: "75px", width: "auto" }}
+          />
+        </Link>
+        <Link href="/dashboard/ingest" style={{ fontSize: "13px" }}>
+          Ingestion
+        </Link>
+        <Link href="/dashboard/play" style={{ fontSize: "13px" }}>
+          Play
+        </Link>
+        <form
+          action="/api/auth/logout"
+          method="POST"
+          style={{ display: "inline-flex" }}
+        >
+          <button
+            type="submit"
+            className="ghost"
+            style={{ fontSize: "12px", padding: "4px 10px" }}
+          >
+            Sign out
+          </button>
+        </form>
       </nav>
       <main style={{ maxWidth: "1100px", margin: "0 auto", padding: "2rem" }}>
         {children}

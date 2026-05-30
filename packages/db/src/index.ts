@@ -42,5 +42,6 @@ export {
 export {
   HintResponseModel,
   type IHintResponse,
+  type HintOutcome,
   type RefusalReason,
 } from "./models/hint-response.model";

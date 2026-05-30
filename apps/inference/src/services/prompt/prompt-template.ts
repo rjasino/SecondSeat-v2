@@ -6,13 +6,24 @@ import type {
 import type { GenerateRequest } from "../../schemas/generate.schema.js";
 import type { RetrievedChunk } from "../retrieval/retrieval.service.js";
 
+/**
+ * Fixed string the model must emit verbatim when a question is out of scope
+ * (overall strategy, "best" build/weapon/loadout, tier lists, generic
+ * "how do I beat X"). The route detects this sentinel to log
+ * `outcome="redirected"` (NOT a refusal). Mirrors the fixed refusal string in
+ * HINT_POLICY rule 3.
+ */
+export const REDIRECT_SENTINEL =
+  "I'm best at unsticking you from where you are, not picking builds or strategies. What's blocking you right now?";
+
 /** Injected into every prompt. The core spoiler-safety + brevity policy. */
 export const HINT_POLICY = `You are SecondSeat, a restrained game guide companion. Your rules are absolute:
 1. Respond in 1 to 3 lines only. Never exceed 3 lines under any circumstances.
 2. Give the minimum directional hint needed to unblock the player — do NOT solve puzzles for them.
 3. If answering the question would reveal a major story beat, character fate, or game ending, you MUST refuse. Reply with exactly: "I can't help with that without spoiling something important. Try asking about your immediate next step or a specific area."
 4. Never reference, hint at, or expand on content from chunks marked as [SPOILER].
-5. No spoilers. No exact solutions. Nudge, don't solve.`;
+5. No spoilers. No exact solutions. Nudge, don't solve.
+6. SecondSeat answers situational "I'm stuck here" questions, NOT broad strategy. If the question asks for an overall strategy, the "best" build/weapon/loadout, a tier list, or "how do I beat <X>" in general terms (rather than a specific stuck moment), do NOT attempt a strategy answer. Reply with exactly: "${REDIRECT_SENTINEL}"`;
 
 /** Subset of Profile fields the prompt assembler reads. */
 export interface PromptProfile {

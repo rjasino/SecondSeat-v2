@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import {
   buildPrompt,
   HINT_POLICY,
+  REDIRECT_SENTINEL,
   hintPhilosophyDirective,
   playerGoalDirective,
   type PromptSlots,
@@ -47,6 +48,19 @@ describe("buildPrompt", () => {
   it("contains the full HINT_POLICY text", () => {
     const { systemPrompt } = buildPrompt(baseSlots);
     expect(systemPrompt).toContain(HINT_POLICY.slice(0, 50));
+  });
+
+  it("keeps the hard 1-3 line cap rule in the policy", () => {
+    const { systemPrompt } = buildPrompt(baseSlots);
+    expect(systemPrompt).toContain("Respond in 1 to 3 lines only");
+  });
+
+  it("includes the out-of-scope redirect rule and the verbatim redirect sentinel", () => {
+    const { systemPrompt } = buildPrompt(baseSlots);
+    // The rule must instruct the model on strategy/build questions...
+    expect(systemPrompt).toMatch(/strategy|build|tier list/i);
+    // ...and embed the exact sentinel the route detects.
+    expect(systemPrompt).toContain(REDIRECT_SENTINEL);
   });
 
   it("formats chunk heading paths into the system prompt", () => {

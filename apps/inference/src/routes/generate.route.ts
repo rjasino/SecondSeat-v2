@@ -3,7 +3,10 @@ import { generateRateLimiter } from "../middleware/rate-limit.middleware.js";
 import { generateSchema } from "../schemas/generate.schema.js";
 import { checkKeywords } from "../services/spoiler/spoiler-check.service.js";
 import { retrieveChunks } from "../services/retrieval/retrieval.service.js";
-import { buildPrompt } from "../services/prompt/prompt-template.js";
+import {
+  buildPrompt,
+  REDIRECT_SENTINEL,
+} from "../services/prompt/prompt-template.js";
 import { getLlmAdapter } from "../services/llm/index.js";
 import {
   insertHintRequest,
@@ -15,6 +18,7 @@ import {
   PlaySessionModel,
   ProfileModel,
   PreferencesModel,
+  type HintOutcome,
   type RefusalReason,
 } from "@secondseat/db";
 import { DEFAULT_PROFILE, DEFAULT_PREFERENCES } from "../lib/defaults.js";
@@ -120,12 +124,14 @@ generateRouter.post(
         hintRequestId,
         outputText: trimmed,
         lineCount: countLines(trimmed) || 1,
+        outcome: "refused",
         refused: true,
         refusalReason: reason,
       });
 
       sendSseEvent(res, "done", {
         lineCount: countLines(trimmed) || 1,
+        outcome: "refused",
         refused: true,
         refusalReason: reason,
       });
@@ -263,6 +269,7 @@ generateRouter.post(
     const adapter = getLlmAdapter();
     let accumulated = "";
     let llmRefused = false;
+    let redirected = false;
 
     // LLM self-refusal signal embedded in the response
     const LLM_REFUSAL_SIGNAL =
@@ -284,6 +291,12 @@ generateRouter.post(
           llmRefused = true;
           break;
         }
+
+        // Detect an out-of-scope redirect (not a refusal)
+        if (accumulated.includes(REDIRECT_SENTINEL)) {
+          redirected = true;
+          break;
+        }
       }
     } catch (err) {
       clearTimeout(timeoutId);
@@ -300,18 +313,26 @@ generateRouter.post(
     const lineCount = Math.max(1, countLines(trimmed));
     const refused = llmRefused;
     const refusalReason: RefusalReason | null = refused ? "llm_refused" : null;
+    // Outcome precedence: a refusal always wins over a redirect; a redirect
+    // wins over a normal answer. Redirects are NOT refusals (refused stays false).
+    const outcome: HintOutcome = refused
+      ? "refused"
+      : redirected
+        ? "redirected"
+        : "answered";
 
     // --- 11. Persist hint_response (fire-and-forget — failures are swallowed) ---
     await insertHintResponse({
       hintRequestId,
       outputText: trimmed,
       lineCount,
+      outcome,
       refused,
       refusalReason,
     });
 
     // --- 12. Emit terminal done event ---
-    sendSseEvent(res, "done", { lineCount, refused, refusalReason });
+    sendSseEvent(res, "done", { lineCount, outcome, refused, refusalReason });
     res.end();
   }
 );
