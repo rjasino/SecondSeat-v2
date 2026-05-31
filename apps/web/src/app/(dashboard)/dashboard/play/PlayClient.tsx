@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
+import { useVoiceStt } from "@/lib/play/use-voice-stt";
 
 interface GameOption {
   id: string;
@@ -124,6 +125,13 @@ export default function PlayClient() {
   const [history, setHistory] = useState<HintEntry[]>([]);
 
   const abortRef = useRef<AbortController | null>(null);
+
+  const { pending: micPending, listening, supported, interimTranscript, start: startVoice } = useVoiceStt(
+    useCallback((text: string) => {
+      setQuestion(text);
+      setFormErrors((fe) => ({ ...fe, question: "" }));
+    }, [])
+  );
 
   const resetStreamState = useCallback(() => {
     setHistory([]);
@@ -581,20 +589,34 @@ export default function PlayClient() {
             <label style={labelStyle}>
               Question <span style={{ color: "var(--danger)" }}>*</span>
             </label>
-            <textarea
-              rows={3}
-              placeholder="e.g. I can't figure out the puzzle here"
-              value={question}
-              disabled={streaming}
-              onChange={(e) => {
-                setQuestion(e.target.value);
-                setFormErrors((fe) => ({ ...fe, question: "" }));
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) void handleSubmitHint();
-              }}
-              style={{ resize: "vertical" }}
-            />
+            <div style={{ position: "relative", display: "flex", alignItems: "flex-start", gap: "0.5rem" }}>
+              <textarea
+                rows={3}
+                placeholder="e.g. I can't figure out the puzzle here"
+                value={question}
+                disabled={streaming}
+                onChange={(e) => {
+                  setQuestion(e.target.value);
+                  setFormErrors((fe) => ({ ...fe, question: "" }));
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) void handleSubmitHint();
+                }}
+                style={{ resize: "vertical", flex: 1 }}
+              />
+              <MicButton
+                pending={micPending}
+                listening={listening}
+                supported={supported}
+                disabled={streaming}
+                onClick={startVoice}
+              />
+            </div>
+            {listening && interimTranscript && (
+              <p style={{ fontSize: "12px", color: "var(--text-muted)", margin: "2px 0 0", fontStyle: "italic" }}>
+                {interimTranscript}…
+              </p>
+            )}
             {formErrors["question"] && <p className="error-msg">{formErrors["question"]}</p>}
           </div>
 
@@ -671,6 +693,74 @@ export default function PlayClient() {
         )}
       </div>
     </div>
+  );
+}
+
+interface MicButtonProps {
+  pending: boolean;
+  listening: boolean;
+  supported: boolean;
+  disabled: boolean;
+  onClick: () => void;
+}
+
+function MicButton({ pending, listening, supported, disabled, onClick }: MicButtonProps) {
+  const isDisabled = disabled || !supported || pending;
+  const tooltip = !supported
+    ? "Voice input requires a Chromium-based browser"
+    : pending
+      ? "Connecting to mic…"
+      : listening
+        ? "Stop recording"
+        : "Push to talk";
+
+  return (
+    <button
+      type="button"
+      title={tooltip}
+      disabled={isDisabled}
+      onClick={onClick}
+      aria-label={tooltip}
+      style={{
+        flexShrink: 0,
+        width: "36px",
+        height: "36px",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        borderRadius: "6px",
+        border: `1px solid ${pending ? "var(--accent)" : "var(--border)"}`,
+        background: listening ? "var(--accent)" : "var(--surface-2, var(--card-bg))",
+        color: listening ? "#fff" : pending ? "var(--accent)" : "var(--text-muted)",
+        cursor: isDisabled ? "not-allowed" : "pointer",
+        opacity: disabled || (!supported && !listening) ? 0.45 : 1,
+        transition: "background 0.15s, color 0.15s, border-color 0.15s",
+        padding: 0,
+        animation: pending ? "ss-mic-pulse 0.9s ease-in-out infinite" : undefined,
+      }}
+    >
+      <MicIcon />
+      <style>{`@keyframes ss-mic-pulse { 0%,100%{opacity:1} 50%{opacity:0.35} }`}</style>
+    </button>
+  );
+}
+
+function MicIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="9" y="2" width="6" height="12" rx="3" />
+      <path d="M5 10a7 7 0 0 0 14 0" />
+      <line x1="12" y1="19" x2="12" y2="22" />
+      <line x1="8" y1="22" x2="16" y2="22" />
+    </svg>
+  );
+}
+
+function StopIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+      <rect x="6" y="6" width="12" height="12" rx="2" />
+    </svg>
   );
 }
 
