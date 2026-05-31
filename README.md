@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="apps/web/public/ss_logo.png" alt="SecondSeat logo" width="180" />
+</p>
+
 # SecondSeat
 
 A second-screen AI companion for gamers — delivers 1–3 line, spoiler-safe micro-hints via voice or text without breaking gameplay flow.
