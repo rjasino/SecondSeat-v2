@@ -668,10 +668,10 @@ export default function PlayClient() {
           </div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-            {history.map((entry, i) => (
+            {[...history].reverse().map((entry, i) => (
               <div key={entry.id} className="card" style={{ padding: "1rem 1.5rem" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "0.5rem" }}>
-                  <span style={{ fontSize: "12px", color: "var(--text-muted)" }}>#{i + 1}</span>
+                  <span style={{ fontSize: "12px", color: "var(--text-muted)" }}>#{history.length - i}</span>
                   <span style={{ fontSize: "13px", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {entry.question}
                   </span>

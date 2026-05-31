@@ -12,3 +12,4 @@ Inferred context — on the test page these are manual inputs. Just confirming t
 ❓ The inference `generateSchema` requires `gameArea` and `chapter` as non-optional strings (`min(1)`). But the user says they are not always required. Should the inference schema be relaxed to `optional()` before this UI ships, or should the proxy enforce defaults (e.g. `"unknown"`) when omitted? — Owner: rjasino-fs`
 
 - I need to fix the data_model.md (doc) and implementation (code) drift. The code implemented a normalized structure over the embedded approach for mongoDB.
+- Add sessionMemory for persisting session context.
