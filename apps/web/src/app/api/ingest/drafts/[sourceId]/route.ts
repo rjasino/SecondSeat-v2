@@ -3,12 +3,15 @@ import { connectDB } from "@/lib/db";
 import { RagSourceModel } from "@/models/rag-source.model";
 import { RagIngestionJobModel } from "@/models/rag-ingestion-job.model";
 import { getSession } from "@/lib/session";
-import { updateDraftSchema, draftSourceIdParamsSchema } from "@/lib/ingest/schemas";
+import {
+  updateDraftSchema,
+  draftSourceIdParamsSchema,
+} from "@/lib/ingest/schemas";
 export const runtime = "nodejs";
 
 export async function PUT(
   req: Request,
-  { params }: { params: Promise<{ sourceId: string }> }
+  { params }: { params: Promise<{ sourceId: string }> },
 ): Promise<NextResponse> {
   const session = await getSession();
   if (!session.userId) {
@@ -36,7 +39,7 @@ export async function PUT(
   if (!parsed.success) {
     return NextResponse.json(
       { error: "validation_error", details: parsed.error.issues },
-      { status: 422 }
+      { status: 422 },
     );
   }
 
@@ -48,14 +51,18 @@ export async function PUT(
   }
   if (source.status !== "draft") {
     return NextResponse.json(
-      { error: "conflict", hint: "Only draft sources can be updated via this endpoint." },
-      { status: 409 }
+      {
+        error: "conflict",
+        hint: "Only draft sources can be updated via this endpoint.",
+      },
+      { status: 409 },
     );
   }
 
-  const { title, game, guideType, author, content } = parsed.data;
+  const { title, game, guideType, content } = parsed.data;
 
-  const charCount = content !== undefined ? content.length : (source.content?.length ?? 0);
+  const charCount =
+    content !== undefined ? content.length : (source.content?.length ?? 0);
   const wordCount = content !== undefined ? countWords(content) : 0;
 
   const updateFields: Record<string, unknown> = {
@@ -65,7 +72,6 @@ export async function PUT(
   if (title !== undefined) updateFields["title"] = title;
   if (game !== undefined) updateFields["metadata.game"] = game;
   if (guideType !== undefined) updateFields["metadata.guideType"] = guideType;
-  if (author !== undefined) updateFields["metadata.author"] = author;
   if (content !== undefined) updateFields["content"] = content;
 
   await RagSourceModel.findByIdAndUpdate(sourceId, { $set: updateFields });
@@ -80,7 +86,7 @@ export async function PUT(
 
 export async function DELETE(
   _req: Request,
-  { params }: { params: Promise<{ sourceId: string }> }
+  { params }: { params: Promise<{ sourceId: string }> },
 ): Promise<NextResponse> {
   const session = await getSession();
   if (!session.userId) {
@@ -105,8 +111,11 @@ export async function DELETE(
   }
   if (source.status !== "draft") {
     return NextResponse.json(
-      { error: "conflict", hint: "Only draft sources can be deleted via this endpoint." },
-      { status: 409 }
+      {
+        error: "conflict",
+        hint: "Only draft sources can be deleted via this endpoint.",
+      },
+      { status: 409 },
     );
   }
 
@@ -114,7 +123,7 @@ export async function DELETE(
   await RagSourceModel.findByIdAndDelete(sourceId);
 
   console.log(
-    `[audit] draft deleted adminId=${session.userId} sourceId=${sourceId} ts=${new Date().toISOString()}`
+    `[audit] draft deleted adminId=${session.userId} sourceId=${sourceId} ts=${new Date().toISOString()}`,
   );
 
   return new NextResponse(null, { status: 204 });

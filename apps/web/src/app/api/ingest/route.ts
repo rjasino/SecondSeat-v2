@@ -4,6 +4,7 @@ import path from "path";
 import { fileTypeFromBuffer } from "file-type";
 import { connectDB } from "@/lib/db";
 import { RagSourceModel } from "@/models/rag-source.model";
+import { UserModel } from "@/models/user.model";
 import { getSession } from "@/lib/session";
 import { config } from "@/lib/config";
 import {
@@ -34,15 +35,14 @@ export async function POST(req: Request): Promise<NextResponse> {
   const metaParsed = uploadMetaSchema.safeParse({
     game: formData.get("game"),
     guideType: formData.get("guideType"),
-    author: formData.get("author"),
   });
   if (!metaParsed.success) {
     return NextResponse.json(
       { error: "validation_error", details: metaParsed.error.issues },
-      { status: 422 }
+      { status: 422 },
     );
   }
-  const { game, guideType, author } = metaParsed.data;
+  const { game, guideType } = metaParsed.data;
 
   const file = formData.get("file");
   if (!(file instanceof File)) {
@@ -56,7 +56,7 @@ export async function POST(req: Request): Promise<NextResponse> {
   if (file.size > config.INGEST_MAX_FILE_BYTES) {
     return NextResponse.json(
       { error: "file_too_large", maxBytes: config.INGEST_MAX_FILE_BYTES },
-      { status: 422 }
+      { status: 422 },
     );
   }
 
@@ -64,7 +64,7 @@ export async function POST(req: Request): Promise<NextResponse> {
   if (!ALLOWED_EXTENSIONS.includes(ext as AllowedExtension)) {
     return NextResponse.json(
       { error: "unsupported_file_type", allowed: [...ALLOWED_EXTENSIONS] },
-      { status: 422 }
+      { status: 422 },
     );
   }
 
@@ -76,11 +76,14 @@ export async function POST(req: Request): Promise<NextResponse> {
   if (detected && !detected.mime.startsWith("text/")) {
     return NextResponse.json(
       { error: "unsupported_file_type", allowed: [...ALLOWED_EXTENSIONS] },
-      { status: 422 }
+      { status: 422 },
     );
   }
 
   await connectDB();
+
+  const user = await UserModel.findById(session.userId).lean();
+  const author = user?.name ?? session.userId;
 
   const ragSource = await RagSourceModel.create({
     title: file.name.replace(/\.[^.]+$/, ""),
@@ -108,7 +111,7 @@ export async function POST(req: Request): Promise<NextResponse> {
   const { text: content, title } = extractContent(
     buffer.toString("utf-8"),
     file.name,
-    mimeType
+    mimeType,
   );
 
   await RagSourceModel.findByIdAndUpdate(ragSource._id, {

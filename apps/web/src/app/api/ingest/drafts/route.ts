@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
 import { RagSourceModel } from "@/models/rag-source.model";
+import { UserModel } from "@/models/user.model";
 import { getSession } from "@/lib/session";
 import { createDraftSchema } from "@/lib/ingest/schemas";
 export const runtime = "nodejs";
@@ -25,13 +26,16 @@ export async function POST(req: Request): Promise<NextResponse> {
   if (!parsed.success) {
     return NextResponse.json(
       { error: "validation_error", details: parsed.error.issues },
-      { status: 422 }
+      { status: 422 },
     );
   }
 
-  const { title, game, guideType, author, content } = parsed.data;
+  const { title, game, guideType, content } = parsed.data;
 
   await connectDB();
+
+  const user = await UserModel.findById(session.userId).lean();
+  const author = user?.name ?? session.userId;
 
   const source = await RagSourceModel.create({
     title,
@@ -50,7 +54,7 @@ export async function POST(req: Request): Promise<NextResponse> {
 
   return NextResponse.json(
     { sourceId: source._id.toString(), status: "draft" },
-    { status: 201 }
+    { status: 201 },
   );
 }
 

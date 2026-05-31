@@ -12,7 +12,7 @@
     "dev:inference": "npm run dev --workspace=@secondseat/inference",
     "dev:workers": "npm run dev --workspace=@secondseat/workers",
     "dev:seed": "npm run seed --workspace=@secondseat/web",
-    "seed:privileged": "npm run seed:privileged --workspace=@secondseat/web",
+    "seed:privileged": "npm run seed --workspace=@secondseat/web",
     "build": "npm run build --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present"

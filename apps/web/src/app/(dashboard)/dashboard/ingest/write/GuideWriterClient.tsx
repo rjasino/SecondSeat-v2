@@ -35,7 +35,6 @@ interface Props {
   initialTitle?: string;
   initialGame?: string;
   initialGuideType?: string;
-  initialAuthor?: string;
   initialContent?: string;
 }
 
@@ -88,7 +87,6 @@ export default function GuideWriterClient({
   initialTitle = "",
   initialGame = "",
   initialGuideType = "",
-  initialAuthor = "",
   initialContent = "",
 }: Props) {
   const router = useRouter();
@@ -107,7 +105,6 @@ export default function GuideWriterClient({
       .catch(() => { /* keep empty */ });
   }, []);
   const [guideType, setGuideType] = useState(initialGuideType);
-  const [author, setAuthor] = useState(initialAuthor);
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -146,7 +143,6 @@ export default function GuideWriterClient({
               title: currentTitle || "Untitled Draft",
               game: game || undefined,
               guideType: guideType || undefined,
-              author: author || undefined,
               content: markdown,
             }),
           });
@@ -172,7 +168,6 @@ export default function GuideWriterClient({
                 title: currentTitle || undefined,
                 game: game || undefined,
                 guideType: guideType || undefined,
-                author: author || undefined,
                 content: markdown,
               }),
             }
@@ -187,7 +182,7 @@ export default function GuideWriterClient({
         setSaveState("error");
       }
     },
-    [title, game, guideType, author]
+    [title, game, guideType]
   );
 
   const scheduleSave = useCallback(
@@ -315,7 +310,6 @@ export default function GuideWriterClient({
 
   async function handleSubmit() {
     if (!title.trim()) { setSubmitError("Title is required."); return; }
-    if (!author.trim()) { setSubmitError("Author is required."); return; }
     const markdown = editor ? getMarkdown(editor.storage) : "";
     if (!markdown.trim()) { setSubmitError("Content cannot be empty."); return; }
 
@@ -499,25 +493,6 @@ export default function GuideWriterClient({
               ))}
             </select>
           </div>
-        </div>
-
-        {/* Author */}
-        <div>
-          <label style={labelStyle}>
-            Author{" "}
-            <span style={{ color: "var(--danger, #e53)" }}>*</span>
-          </label>
-          <input
-            type="text"
-            value={author}
-            maxLength={200}
-            placeholder="e.g. IGN, Fextralife, your username"
-            onChange={(e) => {
-              setAuthor(e.target.value);
-              handleMetaChange();
-            }}
-            style={inputStyle}
-          />
         </div>
 
         {/* Title */}
