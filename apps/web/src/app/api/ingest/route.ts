@@ -39,7 +39,7 @@ export async function POST(req: Request): Promise<NextResponse> {
   if (!metaParsed.success) {
     return NextResponse.json(
       { error: "validation_error", details: metaParsed.error.issues },
-      { status: 422 }
+      { status: 422 },
     );
   }
   const { game, guideType } = metaParsed.data;
@@ -56,7 +56,7 @@ export async function POST(req: Request): Promise<NextResponse> {
   if (file.size > config.INGEST_MAX_FILE_BYTES) {
     return NextResponse.json(
       { error: "file_too_large", maxBytes: config.INGEST_MAX_FILE_BYTES },
-      { status: 422 }
+      { status: 422 },
     );
   }
 
@@ -64,7 +64,7 @@ export async function POST(req: Request): Promise<NextResponse> {
   if (!ALLOWED_EXTENSIONS.includes(ext as AllowedExtension)) {
     return NextResponse.json(
       { error: "unsupported_file_type", allowed: [...ALLOWED_EXTENSIONS] },
-      { status: 422 }
+      { status: 422 },
     );
   }
 
@@ -76,7 +76,7 @@ export async function POST(req: Request): Promise<NextResponse> {
   if (detected && !detected.mime.startsWith("text/")) {
     return NextResponse.json(
       { error: "unsupported_file_type", allowed: [...ALLOWED_EXTENSIONS] },
-      { status: 422 }
+      { status: 422 },
     );
   }
 
@@ -111,7 +111,7 @@ export async function POST(req: Request): Promise<NextResponse> {
   const { text: content, title } = extractContent(
     buffer.toString("utf-8"),
     file.name,
-    mimeType
+    mimeType,
   );
 
   await RagSourceModel.findByIdAndUpdate(ragSource._id, {

@@ -97,7 +97,7 @@ describe("POST /api/ingest/drafts", () => {
       role: "admin",
     } as never);
     const res = await POST(
-      makeRequest({ ...validBody, guideType: "not_a_real_type" })
+      makeRequest({ ...validBody, guideType: "not_a_real_type" }),
     );
     expect(res.status).toBe(422);
   });
@@ -122,7 +122,7 @@ describe("POST /api/ingest/drafts", () => {
           guideType: "boss_guide",
           author: "Arohbi",
         }),
-      })
+      }),
     );
   });
 
@@ -138,7 +138,7 @@ describe("POST /api/ingest/drafts", () => {
     expect(RagSourceModel.create).toHaveBeenCalledWith(
       expect.objectContaining({
         metadata: expect.objectContaining({ author: "admin-1" }),
-      })
+      }),
     );
   });
 
@@ -149,12 +149,14 @@ describe("POST /api/ingest/drafts", () => {
     } as never);
     // author is not a recognised field — Zod strips unknown keys by default,
     // so the create should still succeed (author is ignored from body).
-    const res = await POST(makeRequest({ ...validBody, author: "ShouldBeIgnored" }));
+    const res = await POST(
+      makeRequest({ ...validBody, author: "ShouldBeIgnored" }),
+    );
     expect(res.status).toBe(201);
     expect(RagSourceModel.create).toHaveBeenCalledWith(
       expect.objectContaining({
         metadata: expect.objectContaining({ author: "Arohbi" }),
-      })
+      }),
     );
   });
 

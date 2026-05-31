@@ -32,21 +32,17 @@ function makeParams(sourceId: string) {
 }
 
 function makeDeleteRequest(): Request {
-  return new Request(
-    "http://localhost/api/ingest/drafts/source-abc",
-    { method: "DELETE" }
-  );
+  return new Request("http://localhost/api/ingest/drafts/source-abc", {
+    method: "DELETE",
+  });
 }
 
 function makePutRequest(body: unknown): Request {
-  return new Request(
-    "http://localhost/api/ingest/drafts/source-abc",
-    {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    }
-  );
+  return new Request("http://localhost/api/ingest/drafts/source-abc", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
 }
 
 const adminSession = { userId: "admin-1", role: "admin" };
@@ -74,7 +70,10 @@ describe("DELETE /api/ingest/drafts/[sourceId]", () => {
   });
 
   it("returns 403 when authenticated as non-admin", async () => {
-    vi.mocked(getSession).mockResolvedValue({ userId: "user-1", role: "user" } as never);
+    vi.mocked(getSession).mockResolvedValue({
+      userId: "user-1",
+      role: "user",
+    } as never);
     const res = await DELETE(makeDeleteRequest(), makeParams("source-abc"));
     expect(res.status).toBe(403);
   });
@@ -86,7 +85,9 @@ describe("DELETE /api/ingest/drafts/[sourceId]", () => {
   });
 
   it("returns 409 when source is not a draft", async () => {
-    vi.mocked(RagSourceModel.findById).mockResolvedValue({ status: "completed" } as never);
+    vi.mocked(RagSourceModel.findById).mockResolvedValue({
+      status: "completed",
+    } as never);
     const res = await DELETE(makeDeleteRequest(), makeParams("source-abc"));
     expect(res.status).toBe(409);
   });
@@ -94,7 +95,9 @@ describe("DELETE /api/ingest/drafts/[sourceId]", () => {
   it("hard-deletes draft and returns 204", async () => {
     const res = await DELETE(makeDeleteRequest(), makeParams("source-abc"));
     expect(res.status).toBe(204);
-    expect(RagIngestionJobModel.deleteMany).toHaveBeenCalledWith({ sourceId: "source-abc" });
+    expect(RagIngestionJobModel.deleteMany).toHaveBeenCalledWith({
+      sourceId: "source-abc",
+    });
     expect(RagSourceModel.findByIdAndDelete).toHaveBeenCalledWith("source-abc");
   });
 });
@@ -104,45 +107,56 @@ describe("DELETE /api/ingest/drafts/[sourceId]", () => {
 describe("PUT /api/ingest/drafts/[sourceId]", () => {
   it("returns 401 when unauthenticated", async () => {
     vi.mocked(getSession).mockResolvedValue({ userId: undefined } as never);
-    const res = await PUT(makePutRequest({ title: "New Title" }), makeParams("source-abc"));
+    const res = await PUT(
+      makePutRequest({ title: "New Title" }),
+      makeParams("source-abc"),
+    );
     expect(res.status).toBe(401);
   });
 
   it("returns 404 when source does not exist", async () => {
     vi.mocked(RagSourceModel.findById).mockResolvedValue(null);
-    const res = await PUT(makePutRequest({ title: "New Title" }), makeParams("source-abc"));
+    const res = await PUT(
+      makePutRequest({ title: "New Title" }),
+      makeParams("source-abc"),
+    );
     expect(res.status).toBe(404);
   });
 
   it("returns 409 when source is not a draft", async () => {
-    vi.mocked(RagSourceModel.findById).mockResolvedValue({ status: "completed" } as never);
-    const res = await PUT(makePutRequest({ title: "New Title" }), makeParams("source-abc"));
+    vi.mocked(RagSourceModel.findById).mockResolvedValue({
+      status: "completed",
+    } as never);
+    const res = await PUT(
+      makePutRequest({ title: "New Title" }),
+      makeParams("source-abc"),
+    );
     expect(res.status).toBe(409);
   });
 
   it("returns 200 and persists title and content updates for a valid draft", async () => {
     const res = await PUT(
       makePutRequest({ title: "Updated Title", content: "New content here." }),
-      makeParams("source-abc")
+      makeParams("source-abc"),
     );
     expect(res.status).toBe(200);
     expect(RagSourceModel.findByIdAndUpdate).toHaveBeenCalledWith(
       "source-abc",
       expect.objectContaining({
         $set: expect.objectContaining({ title: "Updated Title" }),
-      })
+      }),
     );
   });
 
   it("does not update metadata.author even if passed in the body", async () => {
     await PUT(
       makePutRequest({ title: "T", author: "ShouldBeIgnored" }),
-      makeParams("source-abc")
+      makeParams("source-abc"),
     );
-    const callArg = vi.mocked(RagSourceModel.findByIdAndUpdate).mock.calls[0]?.[1] as {
+    const callArg = vi.mocked(RagSourceModel.findByIdAndUpdate).mock
+      .calls[0]?.[1] as {
       $set: Record<string, unknown>;
     };
     expect(callArg.$set).not.toHaveProperty("metadata.author");
   });
-
 });

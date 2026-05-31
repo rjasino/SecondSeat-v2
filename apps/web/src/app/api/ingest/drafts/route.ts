@@ -26,7 +26,7 @@ export async function POST(req: Request): Promise<NextResponse> {
   if (!parsed.success) {
     return NextResponse.json(
       { error: "validation_error", details: parsed.error.issues },
-      { status: 422 }
+      { status: 422 },
     );
   }
 
@@ -54,7 +54,7 @@ export async function POST(req: Request): Promise<NextResponse> {
 
   return NextResponse.json(
     { sourceId: source._id.toString(), status: "draft" },
-    { status: 201 }
+    { status: 201 },
   );
 }
 
