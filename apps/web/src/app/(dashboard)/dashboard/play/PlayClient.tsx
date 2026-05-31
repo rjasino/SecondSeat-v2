@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { useVoiceStt } from "@/lib/play/use-voice-stt";
 
 interface GameOption {
@@ -602,7 +602,13 @@ export default function PlayClient() {
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) void handleSubmitHint();
                 }}
-                style={{ resize: "vertical", flex: 1 }}
+                style={{
+                  resize: "vertical",
+                  flex: 1,
+                  outline: listening ? "2px solid var(--accent)" : undefined,
+                  outlineOffset: "1px",
+                  transition: "outline 0.1s",
+                }}
               />
               <MicButton
                 pending={micPending}
@@ -612,11 +618,7 @@ export default function PlayClient() {
                 onClick={startVoice}
               />
             </div>
-            {listening && interimTranscript && (
-              <p style={{ fontSize: "12px", color: "var(--text-muted)", margin: "2px 0 0", fontStyle: "italic" }}>
-                {interimTranscript}…
-              </p>
-            )}
+            <MicStatus pending={micPending} listening={listening} interim={interimTranscript} />
             {formErrors["question"] && <p className="error-msg">{formErrors["question"]}</p>}
           </div>
 
@@ -729,7 +731,7 @@ function MicButton({ pending, listening, supported, disabled, onClick }: MicButt
         alignItems: "center",
         justifyContent: "center",
         borderRadius: "6px",
-        border: `1px solid ${pending ? "var(--accent)" : "var(--border)"}`,
+        border: `1px solid ${listening ? "var(--accent)" : pending ? "var(--accent)" : "var(--border)"}`,
         background: listening ? "var(--accent)" : "var(--surface-2, var(--card-bg))",
         color: listening ? "#fff" : pending ? "var(--accent)" : "var(--text-muted)",
         cursor: isDisabled ? "not-allowed" : "pointer",
@@ -739,9 +741,59 @@ function MicButton({ pending, listening, supported, disabled, onClick }: MicButt
         animation: pending ? "ss-mic-pulse 0.9s ease-in-out infinite" : undefined,
       }}
     >
-      <MicIcon />
+      {listening ? <StopIcon /> : <MicIcon />}
       <style>{`@keyframes ss-mic-pulse { 0%,100%{opacity:1} 50%{opacity:0.35} }`}</style>
     </button>
+  );
+}
+
+interface MicStatusProps {
+  pending: boolean;
+  listening: boolean;
+  interim: string;
+}
+
+function MicStatus({ pending, listening, interim }: MicStatusProps) {
+  // Flash "Speak now" for 1.5 s after listening begins, then settle to normal.
+  const [speakNow, setSpeakNow] = useState(false);
+  const prevListening = useRef(false);
+
+  useEffect(() => {
+    if (listening && !prevListening.current) {
+      setSpeakNow(true);
+      const t = setTimeout(() => setSpeakNow(false), 1500);
+      prevListening.current = true;
+      return () => clearTimeout(t);
+    }
+    if (!listening) prevListening.current = false;
+  }, [listening]);
+
+  const content = useMemo(() => {
+    if (pending) return { text: "Connecting mic…", color: "var(--accent)", pulse: true };
+    if (listening && speakNow) return { text: "● Speak now", color: "var(--accent)", pulse: false };
+    if (listening && interim) return { text: `${interim}…`, color: "var(--text-muted)", pulse: false };
+    if (listening) return { text: "● Recording", color: "var(--accent)", pulse: false };
+    return null;
+  }, [pending, listening, speakNow, interim]);
+
+  if (!content) {
+    return null;
+  }
+
+  return (
+    <p
+      style={{
+        fontSize: "12px",
+        margin: "4px 0 0",
+        fontStyle: content.text.startsWith("●") ? "normal" : "italic",
+        color: content.color,
+        animation: content.pulse ? "ss-mic-pulse 0.9s ease-in-out infinite" : undefined,
+        transition: "color 0.15s",
+      }}
+    >
+      {content.text}
+      <style>{`@keyframes ss-mic-pulse { 0%,100%{opacity:1} 50%{opacity:0.35} }`}</style>
+    </p>
   );
 }
 

@@ -9,7 +9,8 @@ export interface UseVoiceSttReturn {
   supported: boolean;
   interimTranscript: string;
   start: () => void;
-  stop: () => void;
+  /** Resolves once the session has fully ended and the transcript has been committed. */
+  stop: () => Promise<void>;
 }
 
 function getSpeechRecognitionCtor(): SpeechRecognitionCtor | null {
@@ -26,7 +27,11 @@ function getSpeechRecognitionCtor(): SpeechRecognitionCtor | null {
  *
  * - Keeps recording until the user presses stop — prevents premature VAD cutoff.
  * - Finals accumulate in a ref across phrases; committed via `onTranscript` on stop.
- * - Interim text is exposed separately for live preview; never written to the question field.
+ * - Interim text is tracked in both state (for live preview) and a ref so that any
+ *   in-flight interim captured just before stop() is recovered and appended to the
+ *   final transcript — this is what prevents the last syllables being clipped.
+ * - `stop()` is async and resolves only after `onend` fires, so callers can
+ *   `await stop()` and be sure the transcript callback has already been invoked.
  * - `maxAlternatives = 3` primes the engine for higher-confidence scoring; index 0 is
  *   always the browser's top-ranked result.
  */
@@ -38,19 +43,28 @@ export function useVoiceStt(
   const [interimTranscript, setInterimTranscript] = useState("");
   const recognitionRef = useRef<ISpeechRecognition | null>(null);
   const accumulatedRef = useRef("");
+  // Mirrors interimTranscript state so onend can recover clipped words.
+  const interimRef = useRef("");
+  const stopResolveRef = useRef<(() => void) | null>(null);
   const onTranscriptRef = useRef(onTranscript);
   onTranscriptRef.current = onTranscript;
 
   const supported =
     typeof window !== "undefined" && getSpeechRecognitionCtor() !== null;
 
-  const stop = useCallback(() => {
-    recognitionRef.current?.stop();
+  const stop = useCallback((): Promise<void> => {
+    const recognition = recognitionRef.current;
+    if (!recognition) return Promise.resolve();
+
+    return new Promise<void>((resolve) => {
+      stopResolveRef.current = resolve;
+      recognition.stop();
+    });
   }, []);
 
   const start = useCallback(() => {
     if (listening) {
-      stop();
+      void stop();
       return;
     }
 
@@ -58,6 +72,7 @@ export function useVoiceStt(
     if (!Ctor) return;
 
     accumulatedRef.current = "";
+    interimRef.current = "";
     setInterimTranscript("");
     setPending(true);
 
@@ -81,8 +96,10 @@ export function useVoiceStt(
         if (result.isFinal) {
           accumulatedRef.current +=
             (accumulatedRef.current ? " " : "") + best;
+          interimRef.current = "";
         } else {
           interim = best;
+          interimRef.current = best;
         }
       }
       setInterimTranscript(interim);
@@ -93,16 +110,32 @@ export function useVoiceStt(
       setPending(false);
       setListening(false);
       setInterimTranscript("");
+      interimRef.current = "";
+      const resolve = stopResolveRef.current;
+      stopResolveRef.current = null;
+      resolve?.();
     };
 
-    // Commit accumulated text when the session ends (user pressed stop, or timeout).
+    // Commit when the session ends (user pressed stop, or browser VAD timeout).
+    // Any interim that hadn't been finalised before stop() is appended here to
+    // recover words that would otherwise be clipped.
     recognition.onend = () => {
       setPending(false);
       setListening(false);
       setInterimTranscript("");
-      const text = accumulatedRef.current.trim();
-      if (text) onTranscriptRef.current(text);
+
+      const finals = accumulatedRef.current.trim();
+      const tail = interimRef.current.trim();
+      const text = finals && tail ? `${finals} ${tail}` : finals || tail;
+
       accumulatedRef.current = "";
+      interimRef.current = "";
+
+      if (text) onTranscriptRef.current(text);
+
+      const resolve = stopResolveRef.current;
+      stopResolveRef.current = null;
+      resolve?.();
     };
 
     recognitionRef.current = recognition;

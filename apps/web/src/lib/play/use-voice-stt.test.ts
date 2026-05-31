@@ -204,6 +204,68 @@ describe("useVoiceStt", () => {
     expect(onTranscript).not.toHaveBeenCalled();
   });
 
+  it("recovers clipped interim text appended to finals on onend", () => {
+    const onTranscript = vi.fn();
+    const { result } = renderHook(() => useVoiceStt(onTranscript));
+
+    act(() => { result.current.start(); });
+    act(() => { mockInstance.onstart?.call(mockInstance); });
+
+    // One final phrase, followed by interim that never got finalised before stop().
+    act(() => {
+      mockInstance.onresult?.call(
+        mockInstance,
+        makeFakeEvent([makeFakeResult("how do I beat", true)], 0)
+      );
+    });
+    act(() => {
+      mockInstance.onresult?.call(
+        mockInstance,
+        makeFakeEvent([makeFakeResult("the boss", false)], 0)
+      );
+    });
+
+    // onend fires (e.g. user pressed stop) — interim must be recovered.
+    act(() => { mockInstance.onend?.call(mockInstance); });
+
+    expect(onTranscript).toHaveBeenCalledWith("how do I beat the boss");
+  });
+
+  it("commits interim-only text when stop fires before any final result", () => {
+    const onTranscript = vi.fn();
+    const { result } = renderHook(() => useVoiceStt(onTranscript));
+
+    act(() => { result.current.start(); });
+    act(() => { mockInstance.onstart?.call(mockInstance); });
+
+    act(() => {
+      mockInstance.onresult?.call(
+        mockInstance,
+        makeFakeEvent([makeFakeResult("open the chest", false)], 0)
+      );
+    });
+
+    act(() => { mockInstance.onend?.call(mockInstance); });
+
+    expect(onTranscript).toHaveBeenCalledWith("open the chest");
+  });
+
+  it("stop() resolves after onend fires", async () => {
+    const { result } = renderHook(() => useVoiceStt(vi.fn()));
+
+    act(() => { result.current.start(); });
+    act(() => { mockInstance.onstart?.call(mockInstance); });
+
+    let resolved = false;
+    const stopPromise = result.current.stop().then(() => { resolved = true; });
+
+    expect(resolved).toBe(false);
+    act(() => { mockInstance.onend?.call(mockInstance); });
+
+    await stopPromise;
+    expect(resolved).toBe(true);
+  });
+
   it("resets pending, listening, and interim on recognition error without calling onTranscript", () => {
     const onTranscript = vi.fn();
     const { result } = renderHook(() => useVoiceStt(onTranscript));
